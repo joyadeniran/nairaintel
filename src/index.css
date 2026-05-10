@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  
+  /* Brand Color Palette */
+  --color-brand-green: #059669;
+  --color-brand-green-light: #10b981;
+  --color-brand-gold: #f59e0b;
+  --color-brand-slate: #0f172a;
+  
+  /* Surfaces - Light (Default) */
+  --color-glass-white: rgba(255, 255, 255, 0.8);
+  --color-glass-border: rgba(255, 255, 255, 0.4);
+  --color-bg-primary: #F8FAFC;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+}
+
+/* Dark Mode Overrides */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg-primary: #020617;
+    --color-text-primary: #f8fafc;
+    --color-text-secondary: #94a3b8;
+    --color-glass-white: rgba(15, 23, 42, 0.8);
+    --color-glass-border: rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* Support for .dark class toggle */
+.dark {
+  --color-bg-primary: #020617;
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #94a3b8;
+  --color-glass-white: rgba(15, 23, 42, 0.8);
+  --color-glass-border: rgba(255, 255, 255, 0.1);
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] font-sans antialiased transition-colors duration-300;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight;
+  }
+}
+
+.premium-card {
+  @apply bg-[var(--color-glass-white)] backdrop-blur-xl border border-[var(--color-glass-border)] shadow-xl shadow-slate-200/50 dark:shadow-none rounded-[2.5rem] transition-all duration-300;
+}
+
+.premium-card-hover {
+  @apply hover:-translate-y-1 hover:shadow-2xl hover:shadow-slate-300/60 dark:hover:border-brand-green/30;
+}
+
+.glass-panel {
+  @apply bg-[var(--color-glass-white)] backdrop-blur-md border border-[var(--color-glass-border)] shadow-sm rounded-3xl;
+}
+
+.glow-button {
+  @apply bg-brand-green text-white font-display font-semibold px-6 py-3 rounded-2xl 
+         shadow-lg shadow-brand-green/20 hover:shadow-brand-green/40 
+         hover:bg-brand-green-light transition-all active:scale-95;
+}
+
+.text-gradient {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-slate to-brand-green dark:from-white dark:to-brand-green-light;
+}
+
+.data-table-header {
+  @apply text-[11px] uppercase tracking-[0.1em] font-bold text-slate-400 dark:text-slate-500 px-4 py-3 font-display;
+}

@@ -1,0 +1,5 @@
+{
+  "name": "NairaIntel",
+  "description": "Financial intelligence platform for the Nigerian economic landscape, featuring portfolio tracking, AI-powered market news, and an investor community.",
+  "requestFramePermissions": ["camera"]
+}
