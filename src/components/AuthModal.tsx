@@ -35,10 +35,10 @@ export default function AuthModal() {
         <motion.div 
           initial={{ scale: 0.9, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
-          className="premium-card p-10 w-full max-w-md my-8"
+          className="premium-card p-10 w-full max-w-md my-8 !rounded-3xl"
         >
         <div className="flex justify-center mb-8">
-          <div className="w-16 h-16 bg-brand-green rounded-2xl flex items-center justify-center text-white font-display font-bold text-4xl shadow-lg shadow-brand-green/20">
+          <div className="w-16 h-16 bg-brand-green rounded-2xl flex items-center justify-center text-white font-display font-bold text-4xl shadow-sm">
             N
           </div>
         </div>
@@ -82,7 +82,7 @@ export default function AuthModal() {
 
           <button 
             type="submit"
-            className="glow-button w-full flex items-center justify-center gap-3 py-4"
+            className="w-full py-4 bg-brand-green text-white rounded-2xl font-display font-bold flex items-center justify-center gap-3 hover:bg-brand-green-light transition-all shadow-md active:scale-95"
           >
             {isLogin ? <LogIn size={20} /> : <UserPlus size={20} />}
             {isLogin ? 'Sign In' : 'Create Account'}
