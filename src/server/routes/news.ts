@@ -1,13 +1,17 @@
 import { Router, Request, Response } from "express";
 import { getMarketNews } from "../services/ai.js";
-import { getLivePrices, getMarketSnapshot, marketDataStatus } from "../services/marketData.js";
+import {
+  getLivePrices,
+  getMarketSnapshot,
+  marketDataStatus,
+  probeMarketConnection,
+} from "../services/marketData.js";
 
 const router = Router();
 
-// Simple in-memory rate limiter (per IP)
 const buckets = new Map<string, { count: number; reset: number }>();
 const WINDOW_MS = 60_000;
-const MAX_NEWS = 10; // per minute
+const MAX_NEWS = 10;
 const MAX_PRICES = 30;
 
 function rateLimit(key: string, max: number): boolean {
@@ -23,7 +27,10 @@ function rateLimit(key: string, max: number): boolean {
 }
 
 function clientKey(req: Request, suffix: string) {
-  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
+  const ip =
+    (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+    req.ip ||
+    "unknown";
   return `${ip}:${suffix}`;
 }
 
@@ -37,7 +44,6 @@ router.get("/news", async (req: Request, res: Response) => {
     return res.json(Array.isArray(news) ? news : []);
   } catch (e: any) {
     console.error("AI Error (News):", e.message || e);
-    // Static high-quality fallback — not random, not misleading as live AI
     return res.json([
       {
         headline: "NGX market data temporarily unavailable",
@@ -61,7 +67,6 @@ router.post("/live-prices", async (req: Request, res: Response) => {
     return res.json({});
   }
 
-  // Cap and sanitize
   const clean = symbols
     .filter((s: unknown) => typeof s === "string")
     .map((s: string) => s.trim().toUpperCase())
@@ -73,7 +78,6 @@ router.post("/live-prices", async (req: Request, res: Response) => {
     return res.json(prices);
   } catch (e: any) {
     console.error("Live prices error:", e.message || e);
-    // Never return random prices — empty object means "unavailable"
     return res.json({});
   }
 });
@@ -83,12 +87,36 @@ router.get("/market-snapshot", async (req: Request, res: Response) => {
     return res.status(429).json({ error: "Too many requests." });
   }
   const snap = await getMarketSnapshot();
-  if (!snap) return res.status(503).json({ error: "Market snapshot unavailable", status: marketDataStatus() });
+  if (!snap) {
+    return res.status(503).json({ error: "Market snapshot unavailable", status: marketDataStatus() });
+  }
   return res.json(snap);
 });
 
-router.get("/market-status", (_req, res) => {
-  res.json(marketDataStatus());
+/**
+ * Diagnostics.
+ * - Default: current in-memory status (may be empty on cold start)
+ * - ?probe=1: actually calls NGN Market (DANGCEM search + bulk) and returns logs
+ */
+router.get("/market-status", async (req: Request, res: Response) => {
+  const shouldProbe =
+    req.query.probe === "1" ||
+    req.query.probe === "true" ||
+    req.query.probe === undefined; // default probe so cold status is useful
+
+  let probe: any = null;
+  if (shouldProbe) {
+    try {
+      probe = await probeMarketConnection();
+    } catch (e: any) {
+      probe = { ok: false, error: e?.message || String(e) };
+    }
+  }
+
+  return res.json({
+    ...marketDataStatus(),
+    probe,
+  });
 });
 
 export default router;
