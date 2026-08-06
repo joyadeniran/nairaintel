@@ -4,10 +4,14 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/api/(.*)", "destination": "/api/[...path]" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "functions": {
+    "api/[...path].ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
     "api/index.ts": {
       "memory": 1024,
       "maxDuration": 30
