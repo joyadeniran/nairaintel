@@ -31,7 +31,17 @@ function clampPage(raw: unknown): number {
   return n;
 }
 
-// ---------- Public / optional-auth reads ----------
+function safeParseLikes(raw: unknown): string[] {
+  try {
+    if (Array.isArray(raw)) return raw as string[];
+    if (typeof raw === "string") return JSON.parse(raw || "[]");
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
+// ---------- Public reads ----------
 
 router.get("/", optionalAuth, async (req: AuthedRequest, res: Response) => {
   const page = clampPage(req.query.page);
@@ -46,12 +56,21 @@ router.get("/", optionalAuth, async (req: AuthedRequest, res: Response) => {
         query = query.where("category", "==", category);
       }
 
-      const snapshot = await query.orderBy("created_at", "desc").limit(200).get();
+      // Avoid composite-index requirement when filtering: fetch then sort in memory if needed
+      let snapshot;
+      try {
+        snapshot = await query.orderBy("created_at", "desc").limit(200).get();
+      } catch (indexErr) {
+        console.warn("Forum list orderBy failed, falling back:", (indexErr as any)?.message);
+        snapshot = await query.limit(200).get();
+      }
 
       let docs = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
+
+      docs.sort((a: any, b: any) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
 
       if (search) {
         const s = search.toLowerCase();
@@ -80,56 +99,18 @@ router.get("/", optionalAuth, async (req: AuthedRequest, res: Response) => {
     }
   }
 
-  // SQLite read-only fallback for local dev
-  try {
-    const offset = (page - 1) * limit;
-    let query = `SELECT forum_posts.*, users.username FROM forum_posts LEFT JOIN users ON forum_posts.user_id = users.id`;
-    let countQuery = `SELECT COUNT(*) as total FROM forum_posts LEFT JOIN users ON forum_posts.user_id = users.id`;
-    const params: any[] = [];
-    const where: string[] = [];
-
-    if (category && category !== "All") {
-      where.push(`category = ?`);
-      params.push(category);
-    }
-    if (search) {
-      where.push(`(title LIKE ? OR content LIKE ? OR users.username LIKE ?)`);
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
-    }
-    if (where.length) {
-      const w = ` WHERE ${where.join(" AND ")}`;
-      query += w;
-      countQuery += w;
-    }
-    query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
-
-    const posts = db.prepare(query).all(...params, limit, offset);
-    const totalCount = (db.prepare(countQuery).get(...params) as any).total;
-
-    return res.json({
-      posts: (posts as any[]).map((p) => ({
-        ...p,
-        likes: safeParseLikes(p.likes),
-      })),
-      total: totalCount,
-      page,
-      limit,
-      totalPages: Math.max(1, Math.ceil(totalCount / limit)),
-    });
-  } catch (error) {
-    console.error("SQLite forum list error:", error);
-    return res.json({ posts: [], total: 0, page, limit, totalPages: 1 });
-  }
+  return res.json({ posts: [], total: 0, page, limit, totalPages: 1 });
 });
 
 router.get("/trending", optionalAuth, async (_req: AuthedRequest, res: Response) => {
   if (dbFirestore) {
     try {
-      const snapshot = await dbFirestore
-        .collection("forum_posts")
-        .orderBy("created_at", "desc")
-        .limit(20)
-        .get();
+      let snapshot;
+      try {
+        snapshot = await dbFirestore.collection("forum_posts").orderBy("created_at", "desc").limit(20).get();
+      } catch {
+        snapshot = await dbFirestore.collection("forum_posts").limit(20).get();
+      }
 
       const posts = snapshot.docs
         .map((doc) => ({ id: doc.id, ...doc.data() }))
@@ -154,35 +135,29 @@ router.get("/:postId/comments", optionalAuth, async (req: AuthedRequest, res: Re
 
   if (dbFirestore) {
     try {
+      // IMPORTANT: no orderBy here — avoids composite index requirement
+      // (where post_id + orderBy created_at needs a console index)
       const snapshot = await dbFirestore
         .collection("forum_comments")
         .where("post_id", "==", postId)
-        .orderBy("created_at", "asc")
         .limit(200)
         .get();
 
-      const comments = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const comments = snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+
       return res.json(comments);
-    } catch (error) {
-      console.error("Firestore comments error:", error);
-      return res.status(500).json({ error: "Failed to load comments" });
+    } catch (error: any) {
+      console.error("Firestore comments error:", error?.message || error);
+      return res.status(500).json({
+        error: "Failed to load comments",
+        detail: error?.message || String(error),
+      });
     }
   }
 
-  try {
-    const comments = db
-      .prepare(
-        `SELECT forum_comments.*, users.username FROM forum_comments
-         LEFT JOIN users ON forum_comments.user_id = users.id
-         WHERE post_id = ? ORDER BY created_at ASC LIMIT 200`
-      )
-      .all(postId);
-    return res.json(
-      (comments as any[]).map((c) => ({ ...c, likes: safeParseLikes(c.likes) }))
-    );
-  } catch {
-    return res.json([]);
-  }
+  return res.json([]);
 });
 
 // ---------- Authenticated mutations ----------
@@ -190,25 +165,17 @@ router.get("/:postId/comments", optionalAuth, async (req: AuthedRequest, res: Re
 router.post("/", requireAuth, async (req: AuthedRequest, res: Response) => {
   const uid = req.user!.uid;
   const { category, title, content } = req.body || {};
-  const username =
-    req.user!.name ||
-    req.user!.email?.split("@")[0] ||
-    "investor";
+  const username = req.user!.name || req.user!.email?.split("@")[0] || "investor";
 
-  if (!title || !content) {
-    return res.status(400).json({ error: "title and content are required" });
-  }
-  if (!ALLOWED_CATEGORIES.has(category)) {
-    return res.status(400).json({ error: "Invalid category" });
-  }
+  if (!title || !content) return res.status(400).json({ error: "title and content are required" });
+  if (!ALLOWED_CATEGORIES.has(category)) return res.status(400).json({ error: "Invalid category" });
+
   const cleanTitle = String(title).trim().slice(0, MAX_TITLE);
   const cleanContent = String(content).trim().slice(0, MAX_CONTENT);
-  if (!cleanTitle || !cleanContent) {
-    return res.status(400).json({ error: "title and content cannot be empty" });
-  }
+  if (!cleanTitle || !cleanContent) return res.status(400).json({ error: "title and content cannot be empty" });
 
   if (!dbFirestore) {
-    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
+    return res.status(503).json({ error: "Forum writes require Firestore (FIREBASE_SERVICE_ACCOUNT_KEY)" });
   }
 
   try {
@@ -223,9 +190,9 @@ router.post("/", requireAuth, async (req: AuthedRequest, res: Response) => {
       created_at: new Date().toISOString(),
     });
     return res.status(201).json({ id: docRef.id });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Forum create error:", error);
-    return res.status(500).json({ error: "Failed to create post" });
+    return res.status(500).json({ error: "Failed to create post", detail: error?.message });
   }
 });
 
@@ -234,9 +201,7 @@ router.put("/:id", requireAuth, async (req: AuthedRequest, res: Response) => {
   const { id } = req.params;
   const { title, content, category } = req.body || {};
 
-  if (!dbFirestore) {
-    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
-  }
+  if (!dbFirestore) return res.status(503).json({ error: "Forum writes require Firestore" });
 
   try {
     const docRef = dbFirestore.collection("forum_posts").doc(id);
@@ -248,17 +213,15 @@ router.put("/:id", requireAuth, async (req: AuthedRequest, res: Response) => {
     if (title !== undefined) updates.title = String(title).trim().slice(0, MAX_TITLE);
     if (content !== undefined) updates.content = String(content).trim().slice(0, MAX_CONTENT);
     if (category !== undefined) {
-      if (!ALLOWED_CATEGORIES.has(category)) {
-        return res.status(400).json({ error: "Invalid category" });
-      }
+      if (!ALLOWED_CATEGORIES.has(category)) return res.status(400).json({ error: "Invalid category" });
       updates.category = category;
     }
 
     await docRef.update(updates);
     return res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Forum update error:", error);
-    return res.status(500).json({ error: "Failed to update post" });
+    return res.status(500).json({ error: "Failed to update post", detail: error?.message });
   }
 });
 
@@ -266,21 +229,18 @@ router.delete("/:id", requireAuth, async (req: AuthedRequest, res: Response) => 
   const uid = req.user!.uid;
   const { id } = req.params;
 
-  if (!dbFirestore) {
-    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
-  }
+  if (!dbFirestore) return res.status(503).json({ error: "Forum writes require Firestore" });
 
   try {
     const docRef = dbFirestore.collection("forum_posts").doc(id);
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ error: "Post not found" });
     if (doc.data()?.user_id !== uid) return res.status(403).json({ error: "Forbidden" });
-
     await docRef.delete();
     return res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Forum delete error:", error);
-    return res.status(500).json({ error: "Failed to delete post" });
+    return res.status(500).json({ error: "Failed to delete post", detail: error?.message });
   }
 });
 
@@ -288,9 +248,7 @@ router.post("/:id/like", requireAuth, async (req: AuthedRequest, res: Response) 
   const uid = req.user!.uid;
   const { id } = req.params;
 
-  if (!dbFirestore) {
-    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
-  }
+  if (!dbFirestore) return res.status(503).json({ error: "Forum writes require Firestore" });
 
   try {
     const docRef = dbFirestore.collection("forum_posts").doc(id);
@@ -305,9 +263,9 @@ router.post("/:id/like", requireAuth, async (req: AuthedRequest, res: Response) 
 
     await docRef.update({ likes });
     return res.json({ likes: likes.length, liked: index === -1 });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Forum like error:", error);
-    return res.status(500).json({ error: "Failed to like post" });
+    return res.status(500).json({ error: "Failed to like post", detail: error?.message });
   }
 });
 
@@ -315,40 +273,48 @@ router.post("/:postId/comments", requireAuth, async (req: AuthedRequest, res: Re
   const uid = req.user!.uid;
   const { postId } = req.params;
   const { content, quoted_comment } = req.body || {};
-  const username =
-    req.user!.name ||
-    req.user!.email?.split("@")[0] ||
-    "investor";
+  const username = req.user!.name || req.user!.email?.split("@")[0] || "investor";
 
   const clean = String(content || "").trim().slice(0, MAX_CONTENT);
   if (!clean) return res.status(400).json({ error: "content is required" });
 
   if (!dbFirestore) {
-    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
+    return res.status(503).json({
+      error: "Forum writes require Firestore",
+      hint: "Set FIREBASE_SERVICE_ACCOUNT_KEY on Vercel and redeploy",
+    });
   }
 
   try {
-    const commentRef = await dbFirestore.collection("forum_comments").add({
+    const created_at = new Date().toISOString();
+    const payload = {
       post_id: postId,
       user_id: uid,
       username,
       content: clean,
       quoted_comment: quoted_comment ? String(quoted_comment).slice(0, 2000) : null,
-      likes: [],
-      created_at: new Date().toISOString(),
-    });
+      likes: [] as string[],
+      created_at,
+    };
 
-    const postRef = dbFirestore.collection("forum_posts").doc(postId);
-    const post = await postRef.get();
-    if (post.exists) {
-      const currentCount = post.data()?.comment_count || 0;
-      await postRef.update({ comment_count: currentCount + 1 });
+    const commentRef = await dbFirestore.collection("forum_comments").add(payload);
+
+    try {
+      const postRef = dbFirestore.collection("forum_posts").doc(postId);
+      const post = await postRef.get();
+      if (post.exists) {
+        const currentCount = post.data()?.comment_count || 0;
+        await postRef.update({ comment_count: currentCount + 1 });
+      }
+    } catch (countErr) {
+      console.warn("comment_count update failed (non-fatal):", countErr);
     }
 
-    return res.status(201).json({ id: commentRef.id });
-  } catch (error) {
+    // Return full comment so UI can append optimistically even if reload fails
+    return res.status(201).json({ id: commentRef.id, ...payload });
+  } catch (error: any) {
     console.error("Comment create error:", error);
-    return res.status(500).json({ error: "Failed to create comment" });
+    return res.status(500).json({ error: "Failed to create comment", detail: error?.message });
   }
 });
 
@@ -358,22 +324,18 @@ router.put("/comments/:commentId", requireAuth, async (req: AuthedRequest, res: 
   const { content } = req.body || {};
   const clean = String(content || "").trim().slice(0, MAX_CONTENT);
   if (!clean) return res.status(400).json({ error: "content is required" });
-
-  if (!dbFirestore) {
-    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
-  }
+  if (!dbFirestore) return res.status(503).json({ error: "Forum writes require Firestore" });
 
   try {
     const docRef = dbFirestore.collection("forum_comments").doc(commentId);
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ error: "Comment not found" });
     if (doc.data()?.user_id !== uid) return res.status(403).json({ error: "Forbidden" });
-
     await docRef.update({ content: clean });
     return res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Comment update error:", error);
-    return res.status(500).json({ error: "Failed to update comment" });
+    return res.status(500).json({ error: "Failed to update comment", detail: error?.message });
   }
 });
 
@@ -381,43 +343,33 @@ router.delete("/comments/:commentId", requireAuth, async (req: AuthedRequest, re
   const uid = req.user!.uid;
   const { commentId } = req.params;
   const post_id = req.query.post_id as string | undefined;
-
-  if (!dbFirestore) {
-    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
-  }
+  if (!dbFirestore) return res.status(503).json({ error: "Forum writes require Firestore" });
 
   try {
     const docRef = dbFirestore.collection("forum_comments").doc(commentId);
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ error: "Comment not found" });
     if (doc.data()?.user_id !== uid) return res.status(403).json({ error: "Forbidden" });
-
     await docRef.delete();
 
     if (post_id) {
-      const postRef = dbFirestore.collection("forum_posts").doc(post_id);
-      const post = await postRef.get();
-      if (post.exists) {
-        const currentCount = post.data()?.comment_count || 0;
-        await postRef.update({ comment_count: Math.max(0, currentCount - 1) });
+      try {
+        const postRef = dbFirestore.collection("forum_posts").doc(post_id);
+        const post = await postRef.get();
+        if (post.exists) {
+          const currentCount = post.data()?.comment_count || 0;
+          await postRef.update({ comment_count: Math.max(0, currentCount - 1) });
+        }
+      } catch {
+        /* non-fatal */
       }
     }
 
     return res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Comment delete error:", error);
-    return res.status(500).json({ error: "Failed to delete comment" });
+    return res.status(500).json({ error: "Failed to delete comment", detail: error?.message });
   }
 });
-
-function safeParseLikes(raw: unknown): string[] {
-  try {
-    if (Array.isArray(raw)) return raw;
-    if (typeof raw === "string") return JSON.parse(raw || "[]");
-  } catch {
-    /* ignore */
-  }
-  return [];
-}
 
 export default router;
