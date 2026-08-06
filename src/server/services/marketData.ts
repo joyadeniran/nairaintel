@@ -3,17 +3,10 @@
  *
  * Auth:  Authorization: Bearer ngm_live_...
  * Base:  https://api.ngnmarket.com/v1
- * Free:  GET /companies  (list + search) — includes `price` field
- * Hobby: GET /companies/:symbol — NOT used (403 PLAN_REQUIRED on free)
+ * Free:  GET /companies  (list + search) — field `price`
+ * Hobby: GET /companies/:symbol — not used (403 on free)
  *
- * Response envelope:
- * {
- *   success: true,
- *   data: { data: Company[], pagination: {...} },
- *   meta: { plan, calls_used, calls_remaining, reset_at }
- * }
- *
- * Company list item price field is `price` (not current_price in list schema).
+ * Envelope: { success, data: { data: Company[], pagination }, meta }
  */
 
 const NGNMARKET_BASE = "https://api.ngnmarket.com/v1";
@@ -23,22 +16,20 @@ const priceCache: Record<string, { price: number; ts: number; source: string }> 
 let snapshotCache: { data: any; ts: number } | null = null;
 let bulkListCache: { map: Record<string, number>; ts: number } | null = null;
 
-/** Last failures — exposed via /api/market-status for debugging */
 const recentLogs: Array<{ at: string; level: string; message: string; detail?: any }> = [];
 
+function safeDetail(detail: any): any {
+  if (detail === undefined) return undefined;
+  if (typeof detail === "string") return detail.slice(0, 500);
+  try {
+    return JSON.parse(JSON.stringify(detail));
+  } catch {
+    return String(detail).slice(0, 500);
+  }
+}
+
 function log(level: "info" | "warn" | "error", message: string, detail?: any) {
-  const entry = {
-    at: new Date().toISOString(),
-    level,
-    message,
-    detail:
-      detail === undefined
-        ? undefined
-        : typeof detail === "string"
-          ? detail.slice(0, 500)
-          : JSON.parse(JSON.stringify(detail, null, 0).slice?.(0, 500) ?? JSON.stringify(detail).slice(0, 500)),
-  };
-  recentLogs.unshift(entry);
+  recentLogs.unshift({ at: new Date().toISOString(), level, message, detail: safeDetail(detail) });
   if (recentLogs.length > 30) recentLogs.pop();
   const line = `[NGN Market] ${message}`;
   if (level === "error") console.error(line, detail ?? "");
@@ -49,7 +40,6 @@ function log(level: "info" | "warn" | "error", message: string, detail?: any) {
 function getApiKey(): string | null {
   const key = (process.env.NGNMARKET_API_KEY || process.env.NGX_API_KEY || "").trim();
   if (!key) return null;
-  // Strip accidental quotes from Vercel paste
   return key.replace(/^["']|["']$/g, "");
 }
 
@@ -60,11 +50,10 @@ async function ngnFetch(path: string): Promise<{ ok: boolean; status: number; bo
     return { ok: false, status: 0, body: { error: { code: "MISSING_ENV_KEY" } } };
   }
 
-  const url = `${NGNMARKET_BASE}${path}`;
   log("info", `Request ${path}`, { key_prefix: key.slice(0, 12) + "…" });
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch(`${NGNMARKET_BASE}${path}`, {
       headers: {
         Authorization: `Bearer ${key}`,
         Accept: "application/json",
@@ -87,7 +76,6 @@ async function ngnFetch(path: string): Promise<{ ok: boolean; status: number; bo
       return { ok: false, status: res.status, body };
     }
 
-    // Docs: success envelope may still include success:false in edge cases
     if (body && body.success === false) {
       log("error", `API success=false on ${path}`, body.error || body);
       return { ok: false, status: res.status, body };
@@ -115,7 +103,6 @@ function num(v: unknown): number | null {
 
 function extractPriceFromCompany(item: any): number | null {
   if (!item || typeof item !== "object") return null;
-  // Official list schema uses `price`
   return (
     num(item.price) ??
     num(item.current_price) ??
@@ -126,17 +113,12 @@ function extractPriceFromCompany(item: any): number | null {
   );
 }
 
-/**
- * Official shape:
- * body.data.data = Company[]
- * Also tolerate body.data = Company[] for resilience.
- */
 function companiesToPriceMap(body: any): Record<string, number> {
   const map: Record<string, number> = {};
   if (!body) return map;
 
-  let rows: any =
-    body?.data?.data ?? // official envelope
+  const rows: any =
+    body?.data?.data ??
     (Array.isArray(body?.data) ? body.data : null) ??
     (Array.isArray(body) ? body : null);
 
@@ -171,7 +153,6 @@ async function fetchBulkPriceMap(): Promise<Record<string, number>> {
     return bulkListCache.map;
   }
 
-  // Free plan — max limit 200
   const { ok, body } = await ngnFetch(
     "/companies?limit=200&page=1&sort=market_cap&order=desc"
   );
@@ -193,19 +174,13 @@ async function fetchPriceBySearch(symbol: string): Promise<number | null> {
   if (!ok) return null;
   const map = companiesToPriceMap(body);
   if (map[symbol] != null) return map[symbol];
-  // exact match preferred; if single hit, use it
   const entries = Object.entries(map);
   if (entries.length === 1) return entries[0][1];
-  // partial search can return many — pick exact only
-  log("warn", `Search for ${symbol} returned no exact match`, {
-    found: Object.keys(map),
-  });
+  log("warn", `Search for ${symbol} returned no exact match`, { found: Object.keys(map) });
   return null;
 }
 
-export async function getLivePrices(
-  symbols: string[]
-): Promise<Record<string, number>> {
+export async function getLivePrices(symbols: string[]): Promise<Record<string, number>> {
   const unique = [
     ...new Set(
       symbols
@@ -215,18 +190,15 @@ export async function getLivePrices(
     ),
   ];
 
-  log("info", `getLivePrices requested`, { symbols: unique });
+  log("info", "getLivePrices requested", { symbols: unique });
 
   const result: Record<string, number> = {};
   const missing: string[] = [];
 
   for (const sym of unique) {
     const cached = priceCache[sym];
-    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-      result[sym] = cached.price;
-    } else {
-      missing.push(sym);
-    }
+    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) result[sym] = cached.price;
+    else missing.push(sym);
   }
 
   if (missing.length === 0) {
@@ -249,7 +221,7 @@ export async function getLivePrices(
   }
 
   if (missing.length) {
-    log("info", `Still missing after bulk, searching`, { missing });
+    log("info", "Still missing after bulk, searching", { missing });
     await Promise.all(
       missing.map(async (sym) => {
         const price = await fetchPriceBySearch(sym);
@@ -259,7 +231,7 @@ export async function getLivePrices(
     );
   }
 
-  log("info", `getLivePrices result`, {
+  log("info", "getLivePrices result", {
     requested: unique.length,
     resolved: Object.keys(result).length,
     result,
@@ -269,9 +241,7 @@ export async function getLivePrices(
 }
 
 export async function getMarketSnapshot(): Promise<any | null> {
-  if (snapshotCache && Date.now() - snapshotCache.ts < CACHE_TTL_MS) {
-    return snapshotCache.data;
-  }
+  if (snapshotCache && Date.now() - snapshotCache.ts < CACHE_TTL_MS) return snapshotCache.data;
 
   const { ok, body } = await ngnFetch("/market/snapshot");
   if (ok && body) {
@@ -288,15 +258,20 @@ export function marketDataStatus() {
     provider: key ? "ngnmarket" : "none",
     key_configured: !!key,
     key_prefix: key ? key.slice(0, 12) + "…" : null,
-    key_looks_valid: key ? key.startsWith("ngm_") || key.startsWith("ngnm_") : false,
+    key_looks_valid: key ? /^ngm(arket)?_|^ngnm_|^ngm_/.test(key) || key.startsWith("ngm_") : false,
     docs: {
       base: NGNMARKET_BASE,
       auth: "Authorization: Bearer ngm_live_…",
       free_endpoint: "GET /companies?limit=200",
-      note: "GET /companies/:symbol requires Hobby plan — we do not use it",
+      price_field: "price",
+      note: "GET /companies/:symbol is Hobby-only — we never call it",
     },
     cached_symbols: Object.keys(priceCache).length,
-    sample_cache: Object.fromEntries(Object.entries(priceCache).slice(0, 5).map(([k, v]) => [k, v.price])),
+    sample_cache: Object.fromEntries(
+      Object.entries(priceCache)
+        .slice(0, 5)
+        .map(([k, v]) => [k, v.price])
+    ),
     bulk_cached: !!bulkListCache,
     snapshot_cached: !!snapshotCache,
     recent_logs: recentLogs.slice(0, 15),
