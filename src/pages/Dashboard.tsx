@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import { Navigation } from '../components/Navigation';
@@ -12,6 +12,13 @@ import { NewsPage } from './NewsPage';
 import { LearningPage } from './LearningPage';
 import { AddInvestmentModal } from '../components/AddInvestmentModal';
 import { CreatePostModal } from '../components/CreatePostModal';
+
+function livePriceFor(inv: Investment, livePrices: Record<string, number>): number {
+  const sym = String(inv.symbol || '').toUpperCase();
+  const live = livePrices[sym];
+  if (typeof live === 'number' && live > 0) return live;
+  return Number(inv.entry_price) || 0;
+}
 
 export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
@@ -45,6 +52,19 @@ export const Dashboard: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [commentError, setCommentError] = useState<string | null>(null);
+  const [portfolioError, setPortfolioError] = useState<string | null>(null);
+
+  const refreshLivePrices = useCallback(async (list: Investment[]) => {
+    const symbols = list
+      .filter((i) => i.type === 'stock')
+      .map((i) => String(i.symbol || '').toUpperCase())
+      .filter(Boolean);
+    if (symbols.length === 0) return;
+    const prices = await fetchLivePrices([...new Set(symbols)]);
+    if (prices && Object.keys(prices).length > 0) {
+      setLivePrices((prev) => ({ ...prev, ...prices }));
+    }
+  }, []);
 
   const loadComments = async (postId: string | number) => {
     try {
@@ -56,13 +76,27 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const fetchPortfolio = () => {
+  const fetchPortfolio = useCallback(() => {
     if (!user) return;
+    setPortfolioError(null);
     apiFetch('/api/portfolio')
-      .then(res => res.ok ? res.json() : [])
-      .then(data => setInvestments(Array.isArray(data) ? data : []))
-      .catch(() => setInvestments([]));
-  };
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setPortfolioError(body?.error || `Portfolio load failed (${res.status})`);
+          setInvestments([]);
+          return;
+        }
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : [];
+        setInvestments(list);
+        refreshLivePrices(list);
+      })
+      .catch(() => {
+        setPortfolioError('Could not reach portfolio API');
+        setInvestments([]);
+      });
+  }, [user, refreshLivePrices]);
 
   const fetchForumPosts = (page = 1, category = selectedCategory, search = searchQuery) => {
     setIsFetchingPosts(true);
@@ -108,15 +142,10 @@ export const Dashboard: React.FC = () => {
   }, [selectedCategory, searchQuery]);
 
   useEffect(() => {
-    const symbols = investments.filter(i => i.type === 'stock').map(i => i.symbol);
-    if (symbols.length > 0) {
-      fetchLivePrices(Array.from(new Set(symbols))).then(prices => {
-        if (prices && Object.keys(prices).length > 0) {
-          setLivePrices(prices);
-        }
-      });
+    if (investments.length > 0) {
+      refreshLivePrices(investments);
     }
-  }, [investments]);
+  }, [investments, refreshLivePrices]);
 
   useEffect(() => {
     if (selectedPost?.id != null) {
@@ -200,14 +229,12 @@ export const Dashboard: React.FC = () => {
         return;
       }
 
-      // Show immediately from response (even if reload fails)
       if (body?.id) {
         setComments((prev) => [...prev, body as ForumComment]);
       }
 
       setNewComment('');
       setQuotedComment(null);
-      // Best-effort refresh
       loadComments(selectedPost.id);
     } catch (err: any) {
       console.error('Comment error:', err);
@@ -273,14 +300,21 @@ export const Dashboard: React.FC = () => {
     const url = editingInvestment ? `/api/portfolio/${editingInvestment.id}` : '/api/portfolio';
     const method = editingInvestment ? 'PUT' : 'POST';
     
-    await apiFetch(url, {
+    const res = await apiFetch(url, {
       method,
       body: JSON.stringify({
         ...data,
+        symbol: String(data.symbol || '').toUpperCase(),
         entry_price: Number(data.entry_price),
         quantity: Number(data.quantity),
       })
     });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body?.error || 'Failed to save investment');
+      return;
+    }
 
     setShowAddInvestmentModal(false);
     setEditingInvestment(null);
@@ -288,23 +322,20 @@ export const Dashboard: React.FC = () => {
   };
 
   const totalValue = investments.reduce((acc, inv) => {
-    const cp = inv.type === 'stock' ? (livePrices[inv.symbol] || inv.entry_price) : inv.entry_price;
-    return acc + (cp * inv.quantity);
+    const cp = inv.type === 'stock' ? livePriceFor(inv, livePrices) : Number(inv.entry_price) || 0;
+    return acc + (cp * Number(inv.quantity));
   }, 0);
   
-  const totalCost = investments.reduce((acc, inv) => acc + (inv.entry_price * inv.quantity), 0);
+  const totalCost = investments.reduce((acc, inv) => acc + (Number(inv.entry_price) * Number(inv.quantity)), 0);
   const mockGain = totalValue - totalCost;
   
   const stockValue = investments
     .filter(i => i.type === 'stock')
-    .reduce((acc, inv) => {
-      const cp = livePrices[inv.symbol] || inv.entry_price;
-      return acc + (cp * inv.quantity);
-    }, 0);
+    .reduce((acc, inv) => acc + (livePriceFor(inv, livePrices) * Number(inv.quantity)), 0);
     
   const fixedIncomeValue = investments
     .filter(i => i.type === 'tbill')
-    .reduce((acc, inv) => acc + (inv.entry_price * inv.quantity), 0);
+    .reduce((acc, inv) => acc + (Number(inv.entry_price) * Number(inv.quantity)), 0);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-black transition-colors duration-500">
@@ -317,10 +348,10 @@ export const Dashboard: React.FC = () => {
       />
 
       <main className="max-w-7xl mx-auto p-6 md:p-8">
-        {commentError && (
+        {(commentError || portfolioError) && (
           <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 text-rose-700 px-4 py-3 text-sm flex justify-between gap-4">
-            <span>{commentError}</span>
-            <button type="button" className="font-bold" onClick={() => setCommentError(null)}>Dismiss</button>
+            <span>{commentError || portfolioError}</span>
+            <button type="button" className="font-bold" onClick={() => { setCommentError(null); setPortfolioError(null); }}>Dismiss</button>
           </div>
         )}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
