@@ -12,6 +12,16 @@ interface InvestmentListProps {
   handleDeleteInvestment: (id: string | number) => void;
 }
 
+function resolveMarketPrice(inv: Investment, livePrices: Record<string, number>) {
+  const sym = String(inv.symbol || '').toUpperCase();
+  const live = livePrices[sym] ?? livePrices[inv.symbol];
+  const hasLive = typeof live === 'number' && live > 0;
+  return {
+    marketPrice: hasLive ? live : Number(inv.entry_price) || 0,
+    hasLive,
+  };
+}
+
 export const InvestmentList: React.FC<InvestmentListProps> = ({
   investments,
   livePrices,
@@ -32,11 +42,21 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
   );
 
   const hasAny = stocks.length > 0 || tbills.length > 0;
+  const liveCount = stocks.filter(s => resolveMarketPrice(s, livePrices).hasLive).length;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h3 className="text-xl font-display font-bold text-slate-900 dark:text-white">Holdings</h3>
+        <div>
+          <h3 className="text-xl font-display font-bold text-slate-900 dark:text-white">Holdings</h3>
+          {stocks.length > 0 && (
+            <p className="text-xs text-slate-500 mt-1">
+              {liveCount > 0
+                ? `Live NGX prices on ${liveCount}/${stocks.length} stocks`
+                : 'Using entry prices — live NGX feed not applied yet'}
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -65,8 +85,10 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
           <p className="text-lg font-display font-bold text-slate-500 dark:text-slate-400 mb-2">
             {searchQuery ? 'No matching holdings' : 'No assets yet'}
           </p>
-          <p className="text-sm text-slate-400 dark:text-slate-500 mb-6">
-            {searchQuery ? 'Try a different search term.' : 'Add your first stock or T-Bill to start tracking.'}
+          <p className="text-sm text-slate-400 dark:text-slate-500 mb-6 max-w-md mx-auto">
+            {searchQuery
+              ? 'Try a different search term.'
+              : 'Add a stock (e.g. DANGCEM, MTNN, GTCO) to see live NGX market prices in your portfolio.'}
           </p>
           {!searchQuery && (
             <button 
@@ -93,7 +115,7 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                     {stocks.map((inv) => {
-                      const marketPrice = livePrices[inv.symbol] || inv.entry_price;
+                      const { marketPrice, hasLive } = resolveMarketPrice(inv, livePrices);
                       const marketValue = marketPrice * inv.quantity;
                       const cost = inv.entry_price * inv.quantity;
                       const pnl = marketValue - cost;
@@ -105,22 +127,27 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-xl bg-brand-green/10 flex items-center justify-center text-xs font-display font-bold text-brand-green">
-                                {inv.symbol.substring(0, 2)}
+                                {inv.symbol.substring(0, 2).toUpperCase()}
                               </div>
                               <div>
                                 <p className="text-sm font-bold text-slate-800 dark:text-white">{inv.name}</p>
-                                <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{inv.symbol}</p>
+                                <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                                  {inv.symbol}
+                                  {hasLive && (
+                                    <span className="text-emerald-500 normal-case tracking-normal">Live</span>
+                                  )}
+                                </p>
                               </div>
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <p className="text-sm font-bold text-slate-800 dark:text-white">₦{inv.entry_price.toLocaleString()}</p>
-                            <p className={`text-[11px] font-bold ${isUp ? 'text-emerald-500' : 'text-rose-500'}`}>
-                              Mkt: ₦{marketPrice.toLocaleString()}
+                            <p className="text-sm font-bold text-slate-800 dark:text-white">₦{Number(inv.entry_price).toLocaleString()}</p>
+                            <p className={`text-[11px] font-bold ${hasLive ? (isUp ? 'text-emerald-500' : 'text-rose-500') : 'text-slate-400'}`}>
+                              Mkt: ₦{marketPrice.toLocaleString()}{!hasLive ? ' (entry)' : ''}
                             </p>
                           </td>
                           <td className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-400">
-                            {inv.quantity.toLocaleString()}
+                            {Number(inv.quantity).toLocaleString()}
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center justify-end gap-3">
