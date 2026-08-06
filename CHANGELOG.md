@@ -1,5 +1,24 @@
 # Changelog: nairaintel
 
+## [2026-08-06] - Professional UI overhaul
+
+### Fixed (critical)
+- Broken color classes: `naira-green` → `brand-green` in CommunityOverview and ForumPostDetail (colors were not rendering)
+- Dark mode missing in CommunityOverview (cards, borders, text all lacked dark variants)
+- Dark mode missing on error/dismiss banner in Dashboard
+- Auth modal used Chrome icon instead of official Google logo
+
+### Added
+- Mobile bottom navigation bar (Portfolio/Market/Community/Learn) — previously mobile users were stuck on one page
+- Footer with branding and disclaimer
+- Safe-area bottom padding for iOS notch devices
+- Responsive refinements to top nav bar (smaller touch targets on mobile, rounded corners)
+
+### Changed
+- Top nav sticky at top-0 on mobile (was top-6, leaving a gap)
+- "Logout" label → "Sign out" for clarity
+- Auth modal Google button text → "Continue with Google"
+
 ## [2026-08-06] - Vercel deploy + remaining hardening
 
 ### Added

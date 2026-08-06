@@ -73,3 +73,7 @@
 .data-table-header {
   @apply text-[11px] uppercase tracking-[0.1em] font-bold text-slate-400 dark:text-slate-500 px-4 py-3 font-display;
 }
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

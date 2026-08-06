@@ -349,7 +349,7 @@ export const Dashboard: React.FC = () => {
 
       <main className="max-w-7xl mx-auto p-6 md:p-8">
         {(commentError || portfolioError) && (
-          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 text-rose-700 px-4 py-3 text-sm flex justify-between gap-4">
+          <div className="mb-4 rounded-2xl border border-rose-200 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 px-4 py-3 text-sm flex justify-between gap-4">
             <span>{commentError || portfolioError}</span>
             <button type="button" className="font-bold" onClick={() => { setCommentError(null); setPortfolioError(null); }}>Dismiss</button>
           </div>
@@ -447,6 +447,16 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
       </main>
+
+      <footer className="max-w-7xl mx-auto px-6 md:px-8 pb-24 md:pb-8 pt-12">
+        <div className="border-t border-slate-200 dark:border-slate-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 bg-brand-green rounded-lg flex items-center justify-center text-white font-display font-bold text-sm">N</div>
+            <span className="text-sm font-display font-bold text-slate-400 dark:text-slate-500">NairaIntel</span>
+          </div>
+          <p className="text-xs text-slate-400 dark:text-slate-600">Intelligence for your Naira. Not financial advice.</p>
+        </div>
+      </footer>
 
       <AddInvestmentModal 
         isOpen={showAddInvestmentModal}

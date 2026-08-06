@@ -41,14 +41,14 @@ export const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
     <div className="space-y-8">
       <button 
         onClick={onBack}
-        className="flex items-center gap-2 text-slate-500 font-bold hover:text-naira-green transition-colors"
+        className="flex items-center gap-2 text-slate-500 font-bold hover:text-brand-green transition-colors"
       >
         <ArrowLeft size={20} /> Back to Community
       </button>
 
       <div className="p-10 rounded-[2.5rem] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-2xl shadow-slate-200/50">
         <div className="flex items-center gap-3 mb-6">
-          <span className="text-[10px] font-bold text-naira-green bg-naira-green/5 px-3 py-1 rounded-full uppercase tracking-widest border border-naira-green/10">
+          <span className="text-[10px] font-bold text-brand-green bg-brand-green/5 px-3 py-1 rounded-full uppercase tracking-widest border border-brand-green/10">
             {post.category || 'Discussion'}
           </span>
           <span className="text-xs text-slate-400 font-medium">{safeDate(post.created_at)}</span>
@@ -71,7 +71,7 @@ export const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
 
       <div className="space-y-6">
         <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-          <MessageSquare size={24} className="text-naira-green" /> 
+          <MessageSquare size={24} className="text-brand-green" /> 
           Member Responses ({list.length})
         </h3>
         
@@ -101,7 +101,7 @@ export const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
                       <button 
                         type="button"
                         onClick={() => { setEditingComment(comment); setNewComment(comment.content || ''); }}
-                        className="p-2 text-slate-400 hover:text-naira-green hover:bg-white rounded-lg transition-all"
+                        className="p-2 text-slate-400 hover:text-brand-green hover:bg-white rounded-lg transition-all"
                       >
                         <Edit2 size={14} />
                       </button>
@@ -117,8 +117,8 @@ export const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
                 </div>
                 
                 {comment?.quoted_comment && (
-                  <div className="mb-4 p-4 rounded-2xl bg-white/50 dark:bg-slate-800/50 border-l-4 border-naira-green/30 italic text-sm text-slate-400 flex gap-3">
-                    <Quote size={16} className="text-naira-green/30 shrink-0" />
+                  <div className="mb-4 p-4 rounded-2xl bg-white/50 dark:bg-slate-800/50 border-l-4 border-brand-green/30 italic text-sm text-slate-400 flex gap-3">
+                    <Quote size={16} className="text-brand-green/30 shrink-0" />
                     <p className="line-clamp-2">{comment.quoted_comment}</p>
                   </div>
                 )}
@@ -129,7 +129,7 @@ export const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
                   <button 
                     type="button"
                     onClick={() => setQuotedComment(comment)}
-                    className="text-[10px] font-bold text-naira-green uppercase tracking-widest hover:underline flex items-center gap-1"
+                    className="text-[10px] font-bold text-brand-green uppercase tracking-widest hover:underline flex items-center gap-1"
                   >
                     <Quote size={10} /> Reply to this
                   </button>
@@ -144,7 +144,7 @@ export const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
             {quotedComment && (
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
                 <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                  <Quote size={12} className="text-naira-green" />
+                  <Quote size={12} className="text-brand-green" />
                   Replying to <span className="font-bold text-slate-800 dark:text-white">{quotedComment.username || 'Investor'}</span>
                 </div>
                 <button type="button" onClick={() => setQuotedComment(null)} className="text-xs font-bold text-rose-500 hover:underline">Cancel</button>
@@ -154,13 +154,13 @@ export const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
               value={newComment}
               onChange={(e) => setNewComment(e.target.value)}
               placeholder="Share your perspective..."
-              className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-naira-green/20 min-h-[120px] text-sm resize-none transition-all text-slate-800 dark:text-white"
+              className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-green/20 min-h-[120px] text-sm resize-none transition-all text-slate-800 dark:text-white"
               required
             />
             <div className="flex justify-end">
               <button 
                 type="submit"
-                className="bg-naira-green text-white px-8 py-3 rounded-2xl font-bold hover:opacity-90 transition-all shadow-lg shadow-naira-green/20"
+                className="bg-brand-green text-white px-8 py-3 rounded-2xl font-bold hover:opacity-90 transition-all shadow-lg shadow-brand-green/20"
               >
                 Post Reply
               </button>
