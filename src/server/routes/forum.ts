@@ -1,49 +1,65 @@
-import { Router } from "express";
+import { Router, Response } from "express";
 import { db, dbFirestore } from "../db.js";
 import admin from "firebase-admin";
+import { requireAuth, optionalAuth, AuthedRequest } from "../middleware/auth.js";
 
 const router = Router();
-const userId = 1; // Mock user
 
-router.get("/", async (req, res) => {
-  const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 5;
-  const category = req.query.category as string;
-  const search = req.query.search as string;
+const ALLOWED_CATEGORIES = new Set([
+  "Stock Analysis",
+  "Investment Strategies",
+  "Fixed Income",
+  "Market Rumours",
+  "Personal Finance",
+  "Beginner Questions",
+  "Portfolio Reviews",
+]);
+
+const MAX_TITLE = 200;
+const MAX_CONTENT = 10000;
+const MAX_LIMIT = 50;
+
+function clampLimit(raw: unknown): number {
+  const n = parseInt(String(raw ?? "5"), 10);
+  if (Number.isNaN(n) || n < 1) return 5;
+  return Math.min(n, MAX_LIMIT);
+}
+
+function clampPage(raw: unknown): number {
+  const n = parseInt(String(raw ?? "1"), 10);
+  if (Number.isNaN(n) || n < 1) return 1;
+  return n;
+}
+
+// ---------- Public / optional-auth reads ----------
+
+router.get("/", optionalAuth, async (req: AuthedRequest, res: Response) => {
+  const page = clampPage(req.query.page);
+  const limit = clampLimit(req.query.limit);
+  const category = String(req.query.category || "All");
+  const search = String(req.query.search || "").trim().slice(0, 100);
 
   if (dbFirestore) {
     try {
       let query: admin.firestore.Query = dbFirestore.collection("forum_posts");
-      if (category && category !== 'All') {
+      if (category && category !== "All") {
         query = query.where("category", "==", category);
       }
-      
-      let snapshot = await query.orderBy("created_at", "desc").get();
 
-      if (snapshot.empty && !category && !search) {
-        const batch = dbFirestore.batch();
-        const demoPosts = [
-          { user_id: 'system', username: 'investor_naija', category: 'Stock Talk', title: 'Is Dangote Cement undervalued at current price?', content: 'Community discussion about Dangote Cement valuation.', created_at: new Date().toISOString(), likes: [], comment_count: 0 },
-          { user_id: 'system', username: 'investor_naija', category: 'Investment Strategies', title: 'Best long term dividend stocks in Nigeria?', content: 'Looking for recommendations for dividend growth.', created_at: new Date().toISOString(), likes: [], comment_count: 0 }
-        ];
-        for (const post of demoPosts) {
-          batch.set(dbFirestore.collection("forum_posts").doc(), post);
-        }
-        await batch.commit();
-        snapshot = await query.orderBy("created_at", "desc").get();
-      }
+      const snapshot = await query.orderBy("created_at", "desc").limit(200).get();
 
-      let docs = snapshot.docs.map(doc => ({
+      let docs = snapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
       }));
 
       if (search) {
         const s = search.toLowerCase();
-        docs = docs.filter((p: any) => 
-          p.title?.toLowerCase().includes(s) || 
-          p.content?.toLowerCase().includes(s) ||
-          p.username?.toLowerCase().includes(s)
+        docs = docs.filter(
+          (p: any) =>
+            p.title?.toLowerCase().includes(s) ||
+            p.content?.toLowerCase().includes(s) ||
+            p.username?.toLowerCase().includes(s)
         );
       }
 
@@ -56,324 +72,352 @@ router.get("/", async (req, res) => {
         total: totalCount,
         page,
         limit,
-        totalPages: Math.ceil(totalCount / limit)
+        totalPages: Math.max(1, Math.ceil(totalCount / limit)),
       });
     } catch (error) {
-      console.error("Firestore error:", error);
+      console.error("Firestore forum list error:", error);
+      return res.status(500).json({ error: "Failed to load posts" });
     }
   }
 
-  // SQLite Fallback
-  const offset = (page - 1) * limit;
-  let query = `
-    SELECT forum_posts.*, users.username 
-    FROM forum_posts 
-    LEFT JOIN users ON forum_posts.user_id = users.id 
-  `;
-  let countQuery = `
-    SELECT COUNT(*) as total 
-    FROM forum_posts
-    LEFT JOIN users ON forum_posts.user_id = users.id
-  `;
-  const params: any[] = [];
+  // SQLite read-only fallback for local dev
+  try {
+    const offset = (page - 1) * limit;
+    let query = `SELECT forum_posts.*, users.username FROM forum_posts LEFT JOIN users ON forum_posts.user_id = users.id`;
+    let countQuery = `SELECT COUNT(*) as total FROM forum_posts LEFT JOIN users ON forum_posts.user_id = users.id`;
+    const params: any[] = [];
+    const where: string[] = [];
 
-  let whereClauses = [];
-  if (category && category !== 'All') {
-    whereClauses.push(`category = ?`);
-    params.push(category);
-  }
-  if (search) {
-    whereClauses.push(`(title LIKE ? OR content LIKE ? OR users.username LIKE ?)`);
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
-  }
-
-  if (whereClauses.length > 0) {
-    const whereStr = ` WHERE ` + whereClauses.join(' AND ');
-    query += whereStr;
-    countQuery += whereStr;
-  }
-
-  query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
-  
-  const posts = db.prepare(query).all(...params, limit, offset);
-  const totalCount = (db.prepare(countQuery).get(...params) as any).total;
-
-  res.json({
-    posts: (posts as any[]).map(p => ({
-      ...p,
-      likes: JSON.parse(p.likes || '[]')
-    })),
-    total: totalCount,
-    page,
-    limit,
-    totalPages: Math.ceil(totalCount / limit)
-  });
-});
-
-router.post("/", async (req, res) => {
-  const { category, title, content, username, user_id } = req.body;
-  
-  if (dbFirestore) {
-    try {
-      const docRef = await dbFirestore.collection("forum_posts").add({
-        category,
-        title,
-        content,
-        username,
-        user_id,
-        created_at: new Date().toISOString()
-      });
-      return res.json({ id: docRef.id });
-    } catch (error) {
-      console.error("Firestore error:", error);
+    if (category && category !== "All") {
+      where.push(`category = ?`);
+      params.push(category);
     }
-  }
-
-  const targetUserId = user_id || userId;
-  const result = db.prepare(
-    "INSERT INTO forum_posts (user_id, category, title, content, likes) VALUES (?, ?, ?, ?, ?)"
-  ).run(targetUserId, category, title, content, JSON.stringify([]));
-  res.json({ id: result.lastInsertRowid });
-});
-
-router.put("/:id", async (req, res) => {
-  const { id } = req.params;
-  const { title, content, category, user_id } = req.body;
-
-  if (dbFirestore) {
-    try {
-      const docRef = dbFirestore.collection("forum_posts").doc(id);
-      const doc = await docRef.get();
-      if (!doc.exists) return res.status(404).json({ error: "Post not found" });
-      if (doc.data()?.user_id !== user_id) return res.status(403).json({ error: "Unauthorized" });
-
-      await docRef.update({ title, content, category });
-      return res.json({ success: true });
-    } catch (error) {
-      console.error("Firestore error:", error);
+    if (search) {
+      where.push(`(title LIKE ? OR content LIKE ? OR users.username LIKE ?)`);
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
-  }
-
-  const targetUserId = user_id || userId;
-  db.prepare("UPDATE forum_posts SET title = ?, content = ?, category = ? WHERE id = ? AND user_id = ?")
-    .run(title, content, category, id, targetUserId);
-  res.json({ success: true });
-});
-
-router.delete("/:id", async (req, res) => {
-  const { id } = req.params;
-  const { user_id } = req.query;
-
-  if (dbFirestore) {
-    try {
-      const docRef = dbFirestore.collection("forum_posts").doc(id);
-      const doc = await docRef.get();
-      if (!doc.exists) return res.status(404).json({ error: "Post not found" });
-      if (doc.data()?.user_id !== user_id) return res.status(403).json({ error: "Unauthorized" });
-
-      await docRef.delete();
-      return res.json({ success: true });
-    } catch (error) {
-      console.error("Firestore error:", error);
+    if (where.length) {
+      const w = ` WHERE ${where.join(" AND ")}`;
+      query += w;
+      countQuery += w;
     }
-  }
+    query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
 
-  const targetUserId = user_id || userId;
-  db.prepare("DELETE FROM forum_posts WHERE id = ? AND user_id = ?").run(id, targetUserId);
-  res.json({ success: true });
+    const posts = db.prepare(query).all(...params, limit, offset);
+    const totalCount = (db.prepare(countQuery).get(...params) as any).total;
+
+    return res.json({
+      posts: (posts as any[]).map((p) => ({
+        ...p,
+        likes: safeParseLikes(p.likes),
+      })),
+      total: totalCount,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(totalCount / limit)),
+    });
+  } catch (error) {
+    console.error("SQLite forum list error:", error);
+    return res.json({ posts: [], total: 0, page, limit, totalPages: 1 });
+  }
 });
 
-router.post("/:id/like", async (req, res) => {
-  const { id } = req.params;
-  const { user_id } = req.body;
-
+router.get("/trending", optionalAuth, async (_req: AuthedRequest, res: Response) => {
   if (dbFirestore) {
     try {
-      const docRef = dbFirestore.collection("forum_posts").doc(id);
-      const doc = await docRef.get();
-      if (!doc.exists) return res.status(404).json({ error: "Post not found" });
-
-      const data = doc.data();
-      const likes = data?.likes || [];
-      const index = likes.indexOf(user_id);
-
-      if (index === -1) {
-        likes.push(user_id);
-      } else {
-        likes.splice(index, 1);
-      }
-
-      await docRef.update({ likes });
-      return res.json({ likes: likes.length, liked: index === -1 });
-    } catch (error) {
-      console.error("Firestore error:", error);
-    }
-  }
-
-  // SQLite Fallback
-  const post = db.prepare("SELECT likes FROM forum_posts WHERE id = ?").get(id) as any;
-  if (!post) return res.status(404).json({ error: "Post not found" });
-
-  let likes = JSON.parse(post.likes || '[]');
-  const index = likes.indexOf(user_id);
-
-  if (index === -1) {
-    likes.push(user_id);
-  } else {
-    likes.splice(index, 1);
-  }
-
-  db.prepare("UPDATE forum_posts SET likes = ? WHERE id = ?")
-    .run(JSON.stringify(likes), id);
-
-  res.json({ likes: likes.length, liked: index === -1 });
-});
-
-router.get("/trending", async (req, res) => {
-  if (dbFirestore) {
-    try {
-      const snapshot = await dbFirestore.collection("forum_posts")
+      const snapshot = await dbFirestore
+        .collection("forum_posts")
         .orderBy("created_at", "desc")
         .limit(20)
         .get();
-      
-      const posts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })).sort((a: any, b: any) => {
-        const aScore = (a.likes?.length || 0) + (a.comment_count || 0);
-        const bScore = (b.likes?.length || 0) + (b.comment_count || 0);
-        return bScore - aScore;
-      }).slice(0, 5);
+
+      const posts = snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => {
+          const aScore = (a.likes?.length || 0) + (a.comment_count || 0);
+          const bScore = (b.likes?.length || 0) + (b.comment_count || 0);
+          return bScore - aScore;
+        })
+        .slice(0, 5);
 
       return res.json(posts);
     } catch (error) {
-      console.error("Firestore error:", error);
+      console.error("Firestore trending error:", error);
     }
   }
-  res.json([]);
+  return res.json([]);
 });
 
-router.get("/:postId/comments", async (req, res) => {
+router.get("/:postId/comments", optionalAuth, async (req: AuthedRequest, res: Response) => {
   const { postId } = req.params;
+  if (!postId) return res.status(400).json({ error: "Missing postId" });
 
   if (dbFirestore) {
     try {
-      const snapshot = await dbFirestore.collection("forum_comments")
+      const snapshot = await dbFirestore
+        .collection("forum_comments")
         .where("post_id", "==", postId)
         .orderBy("created_at", "asc")
+        .limit(200)
         .get();
-      
-      const comments = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+
+      const comments = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       return res.json(comments);
     } catch (error) {
-      console.error("Firestore error:", error);
+      console.error("Firestore comments error:", error);
+      return res.status(500).json({ error: "Failed to load comments" });
     }
   }
 
-  const comments = db.prepare(`
-    SELECT forum_comments.*, users.username 
-    FROM forum_comments 
-    LEFT JOIN users ON forum_comments.user_id = users.id 
-    WHERE post_id = ?
-    ORDER BY created_at ASC
-  `).all(postId);
-  res.json((comments as any[]).map(c => ({
-    ...c,
-    likes: JSON.parse(c.likes || '[]')
-  })));
+  try {
+    const comments = db
+      .prepare(
+        `SELECT forum_comments.*, users.username FROM forum_comments
+         LEFT JOIN users ON forum_comments.user_id = users.id
+         WHERE post_id = ? ORDER BY created_at ASC LIMIT 200`
+      )
+      .all(postId);
+    return res.json(
+      (comments as any[]).map((c) => ({ ...c, likes: safeParseLikes(c.likes) }))
+    );
+  } catch {
+    return res.json([]);
+  }
 });
 
-router.post("/:postId/comments", async (req, res) => {
-  const { content, username, user_id, quoted_comment } = req.body;
+// ---------- Authenticated mutations ----------
+
+router.post("/", requireAuth, async (req: AuthedRequest, res: Response) => {
+  const uid = req.user!.uid;
+  const { category, title, content } = req.body || {};
+  const username =
+    req.user!.name ||
+    req.user!.email?.split("@")[0] ||
+    "investor";
+
+  if (!title || !content) {
+    return res.status(400).json({ error: "title and content are required" });
+  }
+  if (!ALLOWED_CATEGORIES.has(category)) {
+    return res.status(400).json({ error: "Invalid category" });
+  }
+  const cleanTitle = String(title).trim().slice(0, MAX_TITLE);
+  const cleanContent = String(content).trim().slice(0, MAX_CONTENT);
+  if (!cleanTitle || !cleanContent) {
+    return res.status(400).json({ error: "title and content cannot be empty" });
+  }
+
+  if (!dbFirestore) {
+    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
+  }
+
+  try {
+    const docRef = await dbFirestore.collection("forum_posts").add({
+      category,
+      title: cleanTitle,
+      content: cleanContent,
+      username,
+      user_id: uid,
+      likes: [],
+      comment_count: 0,
+      created_at: new Date().toISOString(),
+    });
+    return res.status(201).json({ id: docRef.id });
+  } catch (error) {
+    console.error("Forum create error:", error);
+    return res.status(500).json({ error: "Failed to create post" });
+  }
+});
+
+router.put("/:id", requireAuth, async (req: AuthedRequest, res: Response) => {
+  const uid = req.user!.uid;
+  const { id } = req.params;
+  const { title, content, category } = req.body || {};
+
+  if (!dbFirestore) {
+    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
+  }
+
+  try {
+    const docRef = dbFirestore.collection("forum_posts").doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: "Post not found" });
+    if (doc.data()?.user_id !== uid) return res.status(403).json({ error: "Forbidden" });
+
+    const updates: Record<string, unknown> = {};
+    if (title !== undefined) updates.title = String(title).trim().slice(0, MAX_TITLE);
+    if (content !== undefined) updates.content = String(content).trim().slice(0, MAX_CONTENT);
+    if (category !== undefined) {
+      if (!ALLOWED_CATEGORIES.has(category)) {
+        return res.status(400).json({ error: "Invalid category" });
+      }
+      updates.category = category;
+    }
+
+    await docRef.update(updates);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Forum update error:", error);
+    return res.status(500).json({ error: "Failed to update post" });
+  }
+});
+
+router.delete("/:id", requireAuth, async (req: AuthedRequest, res: Response) => {
+  const uid = req.user!.uid;
+  const { id } = req.params;
+
+  if (!dbFirestore) {
+    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
+  }
+
+  try {
+    const docRef = dbFirestore.collection("forum_posts").doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: "Post not found" });
+    if (doc.data()?.user_id !== uid) return res.status(403).json({ error: "Forbidden" });
+
+    await docRef.delete();
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Forum delete error:", error);
+    return res.status(500).json({ error: "Failed to delete post" });
+  }
+});
+
+router.post("/:id/like", requireAuth, async (req: AuthedRequest, res: Response) => {
+  const uid = req.user!.uid;
+  const { id } = req.params;
+
+  if (!dbFirestore) {
+    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
+  }
+
+  try {
+    const docRef = dbFirestore.collection("forum_posts").doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: "Post not found" });
+
+    const data = doc.data();
+    const likes: string[] = Array.isArray(data?.likes) ? [...data.likes] : [];
+    const index = likes.indexOf(uid);
+    if (index === -1) likes.push(uid);
+    else likes.splice(index, 1);
+
+    await docRef.update({ likes });
+    return res.json({ likes: likes.length, liked: index === -1 });
+  } catch (error) {
+    console.error("Forum like error:", error);
+    return res.status(500).json({ error: "Failed to like post" });
+  }
+});
+
+router.post("/:postId/comments", requireAuth, async (req: AuthedRequest, res: Response) => {
+  const uid = req.user!.uid;
   const { postId } = req.params;
+  const { content, quoted_comment } = req.body || {};
+  const username =
+    req.user!.name ||
+    req.user!.email?.split("@")[0] ||
+    "investor";
 
-  if (dbFirestore) {
-    try {
-      const commentRef = await dbFirestore.collection("forum_comments").add({
-        post_id: postId,
-        user_id,
-        username,
-        content,
-        quoted_comment: quoted_comment || null,
-        created_at: new Date().toISOString()
-      });
+  const clean = String(content || "").trim().slice(0, MAX_CONTENT);
+  if (!clean) return res.status(400).json({ error: "content is required" });
 
-      const postRef = dbFirestore.collection("forum_posts").doc(postId);
+  if (!dbFirestore) {
+    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
+  }
+
+  try {
+    const commentRef = await dbFirestore.collection("forum_comments").add({
+      post_id: postId,
+      user_id: uid,
+      username,
+      content: clean,
+      quoted_comment: quoted_comment ? String(quoted_comment).slice(0, 2000) : null,
+      likes: [],
+      created_at: new Date().toISOString(),
+    });
+
+    const postRef = dbFirestore.collection("forum_posts").doc(postId);
+    const post = await postRef.get();
+    if (post.exists) {
+      const currentCount = post.data()?.comment_count || 0;
+      await postRef.update({ comment_count: currentCount + 1 });
+    }
+
+    return res.status(201).json({ id: commentRef.id });
+  } catch (error) {
+    console.error("Comment create error:", error);
+    return res.status(500).json({ error: "Failed to create comment" });
+  }
+});
+
+router.put("/comments/:commentId", requireAuth, async (req: AuthedRequest, res: Response) => {
+  const uid = req.user!.uid;
+  const { commentId } = req.params;
+  const { content } = req.body || {};
+  const clean = String(content || "").trim().slice(0, MAX_CONTENT);
+  if (!clean) return res.status(400).json({ error: "content is required" });
+
+  if (!dbFirestore) {
+    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
+  }
+
+  try {
+    const docRef = dbFirestore.collection("forum_comments").doc(commentId);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: "Comment not found" });
+    if (doc.data()?.user_id !== uid) return res.status(403).json({ error: "Forbidden" });
+
+    await docRef.update({ content: clean });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Comment update error:", error);
+    return res.status(500).json({ error: "Failed to update comment" });
+  }
+});
+
+router.delete("/comments/:commentId", requireAuth, async (req: AuthedRequest, res: Response) => {
+  const uid = req.user!.uid;
+  const { commentId } = req.params;
+  const post_id = req.query.post_id as string | undefined;
+
+  if (!dbFirestore) {
+    return res.status(503).json({ error: "Forum writes require Firestore configuration" });
+  }
+
+  try {
+    const docRef = dbFirestore.collection("forum_comments").doc(commentId);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: "Comment not found" });
+    if (doc.data()?.user_id !== uid) return res.status(403).json({ error: "Forbidden" });
+
+    await docRef.delete();
+
+    if (post_id) {
+      const postRef = dbFirestore.collection("forum_posts").doc(post_id);
       const post = await postRef.get();
       if (post.exists) {
         const currentCount = post.data()?.comment_count || 0;
-        await postRef.update({ comment_count: currentCount + 1 });
+        await postRef.update({ comment_count: Math.max(0, currentCount - 1) });
       }
-
-      return res.json({ id: commentRef.id });
-    } catch (error) {
-      console.error("Firestore error:", error);
     }
-  }
 
-  const result = db.prepare(
-    "INSERT INTO forum_comments (post_id, user_id, content, quoted_comment) VALUES (?, ?, ?, ?)"
-  ).run(postId, userId, content, quoted_comment);
-  res.json({ id: result.lastInsertRowid });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Comment delete error:", error);
+    return res.status(500).json({ error: "Failed to delete comment" });
+  }
 });
 
-router.put("/comments/:commentId", async (req, res) => {
-  const { commentId } = req.params;
-  const { content, user_id } = req.body;
-
-  if (dbFirestore) {
-    try {
-      const docRef = dbFirestore.collection("forum_comments").doc(commentId);
-      const doc = await docRef.get();
-      if (!doc.exists) return res.status(404).json({ error: "Comment not found" });
-      if (doc.data()?.user_id !== user_id) return res.status(403).json({ error: "Unauthorized" });
-
-      await docRef.update({ content });
-      return res.json({ success: true });
-    } catch (error) {
-      console.error("Firestore error:", error);
-    }
+function safeParseLikes(raw: unknown): string[] {
+  try {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "string") return JSON.parse(raw || "[]");
+  } catch {
+    /* ignore */
   }
-
-  db.prepare("UPDATE forum_comments SET content = ? WHERE id = ? AND user_id = ?")
-    .run(content, commentId, user_id);
-  res.json({ success: true });
-});
-
-router.delete("/comments/:commentId", async (req, res) => {
-  const { commentId } = req.params;
-  const { user_id, post_id } = req.query;
-
-  if (dbFirestore) {
-    try {
-      const docRef = dbFirestore.collection("forum_comments").doc(commentId);
-      const doc = await docRef.get();
-      if (!doc.exists) return res.status(404).json({ error: "Comment not found" });
-      if (doc.data()?.user_id !== user_id) return res.status(403).json({ error: "Unauthorized" });
-
-      await docRef.delete();
-
-      if (post_id) {
-        const postRef = dbFirestore.collection("forum_posts").doc(post_id as string);
-        const post = await postRef.get();
-        if (post.exists) {
-          const currentCount = post.data()?.comment_count || 0;
-          await postRef.update({ comment_count: Math.max(0, currentCount - 1) });
-        }
-      }
-
-      return res.json({ success: true });
-    } catch (error) {
-      console.error("Firestore error:", error);
-    }
-  }
-
-  db.prepare("DELETE FROM forum_comments WHERE id = ? AND user_id = ?").run(commentId, user_id);
-  res.json({ success: true });
-});
+  return [];
+}
 
 export default router;
