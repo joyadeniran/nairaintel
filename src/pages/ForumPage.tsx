@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Users, Plus, Search, TrendingUp } from 'lucide-react';
+import { Users, Plus, Search } from 'lucide-react';
 import { ForumPostCard } from '../components/Forum/ForumPostCard';
 import { ForumPostDetail } from '../components/Forum/ForumPostDetail';
 import { ForumPost, ForumComment } from '../types';
@@ -31,6 +31,17 @@ interface ForumPageProps {
   trendingPosts: ForumPost[];
 }
 
+const FORUM_CATEGORIES = [
+  'All',
+  'Stock Analysis',
+  'Investment Strategies',
+  'Fixed Income',
+  'Market Rumours',
+  'Personal Finance',
+  'Beginner Questions',
+  'Portfolio Reviews',
+];
+
 export const ForumPage: React.FC<ForumPageProps> = (props) => {
   const { 
     selectedPost, setSelectedPost, forumPosts, isFetchingPosts, 
@@ -53,7 +64,7 @@ export const ForumPage: React.FC<ForumPageProps> = (props) => {
             </div>
             <div>
               <h2 className="text-3xl font-display font-bold text-slate-800 dark:text-white">Community</h2>
-              <p className="text-slate-500 dark:text-slate-400 font-medium">Insights and debates from top Nigerian investors.</p>
+              <p className="text-slate-500 dark:text-slate-400 font-medium">Insights and debates from Nigerian investors.</p>
             </div>
           </div>
           {!selectedPost && (
@@ -86,11 +97,11 @@ export const ForumPage: React.FC<ForumPageProps> = (props) => {
                   />
                 </div>
                 <div className="md:col-span-7 flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide items-center">
-                  {['All', 'Stock Talk', 'Investment Strategies', 'Market Rumours'].map(cat => (
+                  {FORUM_CATEGORIES.map(cat => (
                     <button 
                       key={cat} 
                       onClick={() => setSelectedCategory(cat)}
-                      className={`whitespace-nowrap px-6 py-3 rounded-xl text-sm font-display font-bold transition-all ${
+                      className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-sm font-display font-bold transition-all ${
                         selectedCategory === cat 
                           ? 'bg-brand-green text-white shadow-lg shadow-brand-green/20' 
                           : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-100 dark:border-slate-700'
