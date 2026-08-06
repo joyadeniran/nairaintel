@@ -2,49 +2,46 @@
 
 All notable changes to NairaIntel will be documented in this file.
 
+## [2026-08-06] - Security P0/P1 + Real Market Data
+
+### Security (critical)
+- Removed committed `nairaintel.db` from the repository
+- Gitignore all `*.db` / sqlite files
+- Firebase ID token verification middleware (`requireAuth` / `optionalAuth`)
+- Portfolio + forum **mutations** require verified token; identity never taken from client `user_id`
+- Fixed `authDomain` typo in Firebase client config
+- Frontend `apiFetch` attaches Bearer ID token
+- Corrected portfolio API paths (`/api/portfolio` not `/api/investments`)
+- Input validation + category allowlist on forum
+- Rate limits on `/api/news` and `/api/live-prices`
+- JSON body size limit (64kb)
+- Safer health endpoint (no env leak)
+- Stopped auto-seeding demo data into live user/forum paths
+
+### Market data
+- New `marketData` service: **NGN Market API** as primary price source
+- Gemini reserved for qualitative news/sentiment only — not numeric prices
+- No more random fallback prices (empty / last cache only)
+- `NGNMARKET_API_KEY` documented in `.env.example`
+
 ## [2026-08-06] - Product Specification
 
 ### Added
-- `SPEC.md` — Official product specification covering strategic positioning, target user, core pillars, feature scope rules, and guiding principles
+- `SPEC.md` — product strategy, positioning, scope rules
 
 ## [2026-08-06] - Portfolio, Market Intel & Polish
 
 ### Portfolio Experience
-- Redesigned summary cards with real cost basis, unrealized P&L and total return %
-- Added asset allocation view (Equities vs Fixed Income) with progress bars
-- Per-holding P&L and return % in the holdings table
-- Clearer Entry vs Market price display
-- Better empty state when no assets exist
+- Real cost basis, unrealized P&L, allocation bars
+- Per-holding P&L in holdings table
 
 ### Market Intelligence
-- Cleaner navigation and safer index handling
-- Improved visual hierarchy and labels ("Investor Impact", Alpha badge)
-- Better empty and loading states
-
-### Technical / UX Polish
-- Separated investment and post modal states (earlier)
-- Expanded investment-focused forum categories (earlier)
-- Improved holdings table UX and empty states
+- Cleaner presentation and navigation
 
 ## [2026-08-06] - Forum Categories Expansion & Modal Cleanup
 
 ### Added
-- Expanded investment-focused forum categories:
-  - Stock Analysis
-  - Investment Strategies
-  - Fixed Income
-  - Market Rumours
-  - Personal Finance
-  - Beginner Questions
-  - Portfolio Reviews
-- Consistent category list shared between CreatePostModal and ForumPage filters
+- Investment-focused forum categories aligned across UI
 
 ### Fixed
-- Separated `showAddInvestmentModal` and `showCreatePostModal` states
-- Removed unsafe type casting
-
-## [2026-05-10] - Initial Planning & Setup
-
-### Added
-- `PREMIUM_UI_SPEC.md`: Comprehensive design specification for the premium UI overhaul.
-- `CHANGELOG.md`: Tracking file for UI changes.
+- Separated investment vs post modal states
