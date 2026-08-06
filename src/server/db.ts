@@ -1,15 +1,16 @@
 import admin from "firebase-admin";
 import path from "path";
+import { createRequire } from "module";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const require = createRequire(import.meta.url);
 
-// Detect serverless (Vercel, etc.) — avoid native SQLite there
 const isServerless =
   !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.FUNCTION_NAME);
 
-// ---------- Firebase Admin (required for production auth + Firestore) ----------
+// ---------- Firebase Admin ----------
 let dbFirestore: admin.firestore.Firestore | null = null;
 
 try {
@@ -34,8 +35,7 @@ let db: any = null;
 
 if (!isServerless) {
   try {
-    // Dynamic import path kept simple for tsx local runs
-    const Database = (await import("better-sqlite3")).default;
+    const Database = require("better-sqlite3");
     const dbPath = path.resolve(process.cwd(), "nairaintel.db");
     db = new Database(dbPath);
 
@@ -90,12 +90,12 @@ if (!isServerless) {
     try {
       db.exec("ALTER TABLE forum_posts ADD COLUMN likes TEXT DEFAULT '[]'");
     } catch {
-      /* already exists */
+      /* exists */
     }
     try {
       db.exec("ALTER TABLE forum_comments ADD COLUMN likes TEXT DEFAULT '[]'");
     } catch {
-      /* already exists */
+      /* exists */
     }
 
     const userCount = (db.prepare("SELECT COUNT(*) as count FROM users").get() as any).count;
@@ -113,10 +113,9 @@ if (!isServerless) {
     db = null;
   }
 } else {
-  console.log("Serverless environment detected — SQLite disabled, using Firestore only");
+  console.log("Serverless — SQLite disabled, Firestore only");
 }
 
-// Minimal stub so routes that call db.prepare don't crash if SQLite is absent
 if (!db) {
   db = {
     prepare: () => ({
