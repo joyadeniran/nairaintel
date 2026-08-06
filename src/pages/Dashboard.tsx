@@ -164,32 +164,51 @@ export const Dashboard: React.FC = () => {
     setCommentError(null);
 
     try {
-      let res: Response;
       if (editingComment) {
-        res = await apiFetch(`/api/forum/comments/${editingComment.id}`, {
+        const res = await apiFetch(`/api/forum/comments/${editingComment.id}`, {
           method: 'PUT',
           body: JSON.stringify({ content: newComment })
         });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setCommentError(body?.error || `Could not update reply (${res.status})`);
+          return;
+        }
         setEditingComment(null);
-      } else {
-        res = await apiFetch(`/api/forum/${selectedPost.id}/comments`, {
-          method: 'POST',
-          body: JSON.stringify({ 
-            content: newComment,
-            quoted_comment: quotedComment ? `${quotedComment.username || 'Investor'} posted:\n\n"${quotedComment.content}"` : null
-          })
-        });
+        setNewComment('');
+        setQuotedComment(null);
+        await loadComments(selectedPost.id);
+        return;
       }
 
+      const res = await apiFetch(`/api/forum/${selectedPost.id}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ 
+          content: newComment,
+          quoted_comment: quotedComment ? `${quotedComment.username || 'Investor'} posted:\n\n"${quotedComment.content}"` : null
+        })
+      });
+
+      const body = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setCommentError(body?.error || `Could not post reply (${res.status})`);
+        setCommentError(
+          body?.error
+            ? `${body.error}${body.detail ? ` — ${body.detail}` : ''}${body.hint ? ` (${body.hint})` : ''}`
+            : `Could not post reply (${res.status})`
+        );
         return;
+      }
+
+      // Show immediately from response (even if reload fails)
+      if (body?.id) {
+        setComments((prev) => [...prev, body as ForumComment]);
       }
 
       setNewComment('');
       setQuotedComment(null);
-      await loadComments(selectedPost.id);
+      // Best-effort refresh
+      loadComments(selectedPost.id);
     } catch (err: any) {
       console.error('Comment error:', err);
       setCommentError(err?.message || 'Could not post reply. Please try again.');
@@ -201,6 +220,7 @@ export const Dashboard: React.FC = () => {
     if (window.confirm('Delete this comment?')) {
       try {
         await apiFetch(`/api/forum/comments/${commentId}?post_id=${selectedPost.id}`, { method: 'DELETE' });
+        setComments((prev) => prev.filter((c) => c.id !== commentId));
         await loadComments(selectedPost.id);
       } catch {
         setCommentError('Could not delete comment');
@@ -233,10 +253,15 @@ export const Dashboard: React.FC = () => {
     const url = editingPost ? `/api/forum/${editingPost.id}` : '/api/forum';
     const method = editingPost ? 'PUT' : 'POST';
 
-    await apiFetch(url, {
+    const res = await apiFetch(url, {
       method,
       body: JSON.stringify(data)
     });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body?.error || 'Failed to create post');
+      return;
+    }
 
     setShowCreatePostModal(false);
     setEditingPost(null);
