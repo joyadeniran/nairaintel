@@ -1,104 +1,145 @@
-import { Router } from "express";
+import { Router, Response } from "express";
 import { db, dbFirestore } from "../db.js";
+import { requireAuth, AuthedRequest } from "../middleware/auth.js";
 
 const router = Router();
-const userId = 1; // Mock user for MVP
 
-router.get("/", async (req, res) => {
-  const { user_id } = req.query;
-  if (dbFirestore && user_id) {
+// All portfolio routes require a verified Firebase user
+router.use(requireAuth);
+
+function getUid(req: AuthedRequest): string {
+  // Identity comes only from verified token
+  return req.user!.uid;
+}
+
+router.get("/", async (req: AuthedRequest, res: Response) => {
+  const uid = getUid(req);
+
+  if (dbFirestore) {
     try {
-      const snapshot = await dbFirestore.collection("investments").where("user_id", "==", user_id).get();
-      if (snapshot.empty) {
-        const batch = dbFirestore.batch();
-        const demoInvestments = [
-          { user_id, type: 'stock', symbol: 'DANGCEM', name: 'Dangote Cement', entry_price: 280.00, quantity: 1500, date_acquired: '2022-01-01' },
-          { user_id, type: 'stock', symbol: 'GTCO', name: 'GTBank', entry_price: 31.50, quantity: 3000, date_acquired: '2022-02-01' },
-          { user_id, type: 'stock', symbol: 'MTNN', name: 'MTN Nigeria', entry_price: 180.00, quantity: 1200, date_acquired: '2022-03-01' },
-          { user_id, type: 'tbill', symbol: '91-Day T-Bill', name: '91-Day T-Bill 6.75%', entry_price: 1440000, quantity: 1, date_acquired: '2022-05-12' }
-        ];
-        for (const inv of demoInvestments) {
-          batch.set(dbFirestore.collection("investments").doc(), inv);
-        }
-        await batch.commit();
-        const newSnapshot = await dbFirestore.collection("investments").where("user_id", "==", user_id).get();
-        return res.json(newSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      }
+      const snapshot = await dbFirestore.collection("investments").where("user_id", "==", uid).get();
       const investments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       return res.json(investments);
     } catch (error) {
-      console.error("Firestore error:", error);
+      console.error("Firestore portfolio GET error:", error);
+      return res.status(500).json({ error: "Failed to load portfolio" });
     }
   }
-  const investments = db.prepare("SELECT * FROM investments WHERE user_id = ?").all(userId);
-  res.json(investments);
+
+  // SQLite local-dev fallback: key by string uid stored in a side table is not available;
+  // return empty for unconfigured admin rather than leaking mock user 1 data.
+  try {
+    const investments = db.prepare("SELECT * FROM investments WHERE CAST(user_id AS TEXT) = ?").all(uid);
+    return res.json(investments);
+  } catch (error) {
+    console.error("SQLite portfolio GET error:", error);
+    return res.json([]);
+  }
 });
 
-router.post("/", async (req, res) => {
-  const { type, symbol, name, entry_price, quantity, user_id } = req.body;
-  
-  if (dbFirestore && user_id) {
+router.post("/", async (req: AuthedRequest, res: Response) => {
+  const uid = getUid(req);
+  const { type, symbol, name, entry_price, quantity } = req.body || {};
+
+  // Basic validation
+  if (!type || !symbol || !name || entry_price == null || quantity == null) {
+    return res.status(400).json({ error: "Missing required fields: type, symbol, name, entry_price, quantity" });
+  }
+  if (!['stock', 'tbill'].includes(type)) {
+    return res.status(400).json({ error: "type must be 'stock' or 'tbill'" });
+  }
+  const price = parseFloat(entry_price);
+  const qty = parseInt(quantity, 10);
+  if (Number.isNaN(price) || price < 0 || Number.isNaN(qty) || qty <= 0) {
+    return res.status(400).json({ error: "Invalid entry_price or quantity" });
+  }
+
+  if (dbFirestore) {
     try {
       const docRef = await dbFirestore.collection("investments").add({
-        user_id,
+        user_id: uid,
         type,
-        symbol,
-        name,
-        entry_price: parseFloat(entry_price),
-        quantity: parseInt(quantity),
+        symbol: String(symbol).trim().toUpperCase().slice(0, 32),
+        name: String(name).trim().slice(0, 120),
+        entry_price: price,
+        quantity: qty,
         date_acquired: new Date().toISOString()
       });
-      return res.json({ id: docRef.id });
+      return res.status(201).json({ id: docRef.id });
     } catch (error) {
-      console.error("Firestore error:", error);
+      console.error("Firestore portfolio POST error:", error);
+      return res.status(500).json({ error: "Failed to create investment" });
     }
   }
-  const result = db.prepare(
-    "INSERT INTO investments (user_id, type, symbol, name, entry_price, quantity, date_acquired) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(userId, type, symbol, name, entry_price, quantity, new Date().toISOString());
-  res.json({ id: result.lastInsertRowid });
+
+  return res.status(503).json({ error: "Portfolio write requires Firestore configuration" });
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", async (req: AuthedRequest, res: Response) => {
+  const uid = getUid(req);
   const { id } = req.params;
-  const { type, symbol, name, entry_price, quantity, user_id } = req.body;
+  const { type, symbol, name, entry_price, quantity } = req.body || {};
 
-  if (dbFirestore && user_id) {
+  if (!id) return res.status(400).json({ error: "Missing id" });
+
+  if (dbFirestore) {
     try {
-      await dbFirestore.collection("investments").doc(id).update({
-        type,
-        symbol,
-        name,
-        entry_price: parseFloat(entry_price),
-        quantity: parseInt(quantity)
-      });
+      const docRef = dbFirestore.collection("investments").doc(id);
+      const doc = await docRef.get();
+      if (!doc.exists) return res.status(404).json({ error: "Investment not found" });
+      if (doc.data()?.user_id !== uid) return res.status(403).json({ error: "Forbidden" });
+
+      const updates: Record<string, unknown> = {};
+      if (type !== undefined) {
+        if (!['stock', 'tbill'].includes(type)) return res.status(400).json({ error: "Invalid type" });
+        updates.type = type;
+      }
+      if (symbol !== undefined) updates.symbol = String(symbol).trim().toUpperCase().slice(0, 32);
+      if (name !== undefined) updates.name = String(name).trim().slice(0, 120);
+      if (entry_price !== undefined) {
+        const price = parseFloat(entry_price);
+        if (Number.isNaN(price) || price < 0) return res.status(400).json({ error: "Invalid entry_price" });
+        updates.entry_price = price;
+      }
+      if (quantity !== undefined) {
+        const qty = parseInt(quantity, 10);
+        if (Number.isNaN(qty) || qty <= 0) return res.status(400).json({ error: "Invalid quantity" });
+        updates.quantity = qty;
+      }
+
+      await docRef.update(updates);
       return res.json({ success: true });
     } catch (error) {
-      console.error("Firestore error:", error);
+      console.error("Firestore portfolio PUT error:", error);
+      return res.status(500).json({ error: "Failed to update investment" });
     }
   }
 
-  db.prepare(
-    "UPDATE investments SET type = ?, symbol = ?, name = ?, entry_price = ?, quantity = ? WHERE id = ? AND user_id = ?"
-  ).run(type, symbol, name, entry_price, quantity, id, userId);
-  res.json({ success: true });
+  return res.status(503).json({ error: "Portfolio write requires Firestore configuration" });
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req: AuthedRequest, res: Response) => {
+  const uid = getUid(req);
   const { id } = req.params;
-  const { user_id } = req.query;
 
-  if (dbFirestore && user_id) {
+  if (!id) return res.status(400).json({ error: "Missing id" });
+
+  if (dbFirestore) {
     try {
-      await dbFirestore.collection("investments").doc(id).delete();
+      const docRef = dbFirestore.collection("investments").doc(id);
+      const doc = await docRef.get();
+      if (!doc.exists) return res.status(404).json({ error: "Investment not found" });
+      if (doc.data()?.user_id !== uid) return res.status(403).json({ error: "Forbidden" });
+
+      await docRef.delete();
       return res.json({ success: true });
     } catch (error) {
-      console.error("Firestore error:", error);
+      console.error("Firestore portfolio DELETE error:", error);
+      return res.status(500).json({ error: "Failed to delete investment" });
     }
   }
 
-  db.prepare("DELETE FROM investments WHERE id = ? AND user_id = ?").run(id, userId);
-  res.json({ success: true });
+  return res.status(503).json({ error: "Portfolio write requires Firestore configuration" });
 });
 
 export default router;
