@@ -10,6 +10,16 @@ interface CreatePostModalProps {
   onConfirm: (e: React.FormEvent<HTMLFormElement>) => void;
 }
 
+const CATEGORIES = [
+  { value: 'Stock Analysis', label: 'Stock Analysis' },
+  { value: 'Investment Strategies', label: 'Investment Strategies' },
+  { value: 'Fixed Income', label: 'Fixed Income (T-Bills, Bonds)' },
+  { value: 'Market Rumours', label: 'Market News & Rumours' },
+  { value: 'Personal Finance', label: 'Personal Finance' },
+  { value: 'Beginner Questions', label: 'Beginner Questions' },
+  { value: 'Portfolio Reviews', label: 'Portfolio Reviews' },
+];
+
 export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   isOpen,
   onClose,
@@ -36,7 +46,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         >
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-3xl font-display font-bold text-slate-800 dark:text-white tracking-tight">
-              {editingPost ? 'Refine Post' : 'Start Discussion'}
+              {editingPost ? 'Edit Discussion' : 'Start Discussion'}
             </h2>
             <button onClick={onClose} className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
               <Plus size={28} className="rotate-45" />
@@ -45,39 +55,43 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
           <form className="space-y-6" onSubmit={onConfirm}>
             <div className="space-y-2">
-              <label className="text-xs font-display font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest ml-1">Forum Category</label>
+              <label className="text-xs font-display font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest ml-1">
+                Category
+              </label>
               <select 
                 name="category" 
-                defaultValue={editingPost?.category || 'Stock Talk'}
+                defaultValue={editingPost?.category || 'Stock Analysis'}
                 className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 focus:outline-none focus:ring-4 focus:ring-brand-green/10 font-bold text-slate-800 dark:text-white appearance-none transition-all"
               >
-                <option value="General">General Talk</option>
-                <option value="Stock Talk">Market Analysis</option>
-                <option value="T-Bill & Bonds">Fixed Income</option>
-                <option value="Investment Strategies">Proven Strategies</option>
-                <option value="Market Rumours">Market Intelligence (Unverified)</option>
+                {CATEGORIES.map(cat => (
+                  <option key={cat.value} value={cat.value}>{cat.label}</option>
+                ))}
               </select>
             </div>
             
             <div className="space-y-2">
-              <label className="text-xs font-display font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest ml-1">Headline</label>
+              <label className="text-xs font-display font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest ml-1">
+                Headline
+              </label>
               <input 
                 name="title" 
                 required 
                 defaultValue={editingPost?.title || ''}
-                placeholder="Make it catchy and descriptive..." 
+                placeholder="Clear, descriptive title..." 
                 className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 focus:outline-none focus:ring-4 focus:ring-brand-green/10 font-bold text-slate-800 dark:text-white placeholder:text-slate-400 transition-all" 
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-display font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest ml-1">Details & Perspective</label>
+              <label className="text-xs font-display font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest ml-1">
+                Details & Perspective
+              </label>
               <textarea 
                 name="content" 
                 required 
                 rows={6} 
                 defaultValue={editingPost?.content || ''}
-                placeholder="Deep dive into your thoughts. What should other investors know?" 
+                placeholder="Share your analysis, thesis, questions or experience. What should other investors know?" 
                 className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 focus:outline-none focus:ring-4 focus:ring-brand-green/10 font-medium text-slate-800 dark:text-white placeholder:text-slate-400 resize-none transition-all" 
               />
             </div>
@@ -88,13 +102,13 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 onClick={onClose}
                 className="flex-1 py-4 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-display font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700 transition-all border border-slate-100 dark:border-slate-700"
               >
-                Draft
+                Cancel
               </button>
               <button 
                 type="submit" 
                 className="flex-[2] glow-button py-4"
               >
-                {editingPost ? 'Update' : 'Broadcast'}
+                {editingPost ? 'Update Discussion' : 'Post Discussion'}
               </button>
             </div>
           </form>
