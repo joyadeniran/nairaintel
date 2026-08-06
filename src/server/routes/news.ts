@@ -1,55 +1,94 @@
-import { Router } from "express";
-import { getMarketNews, getLivePrices } from "../services/ai.js";
+import { Router, Request, Response } from "express";
+import { getMarketNews } from "../services/ai.js";
+import { getLivePrices, getMarketSnapshot, marketDataStatus } from "../services/marketData.js";
 
 const router = Router();
 
-router.get("/news", async (req, res) => {
+// Simple in-memory rate limiter (per IP)
+const buckets = new Map<string, { count: number; reset: number }>();
+const WINDOW_MS = 60_000;
+const MAX_NEWS = 10; // per minute
+const MAX_PRICES = 30;
+
+function rateLimit(key: string, max: number): boolean {
+  const now = Date.now();
+  const b = buckets.get(key);
+  if (!b || now > b.reset) {
+    buckets.set(key, { count: 1, reset: now + WINDOW_MS });
+    return true;
+  }
+  if (b.count >= max) return false;
+  b.count += 1;
+  return true;
+}
+
+function clientKey(req: Request, suffix: string) {
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
+  return `${ip}:${suffix}`;
+}
+
+router.get("/news", async (req: Request, res: Response) => {
+  if (!rateLimit(clientKey(req, "news"), MAX_NEWS)) {
+    return res.status(429).json({ error: "Too many requests. Try again shortly." });
+  }
+
   try {
     const news = await getMarketNews();
-    res.json(news);
+    return res.json(Array.isArray(news) ? news : []);
   } catch (e: any) {
     console.error("AI Error (News):", e.message || e);
-    // Fallback
-    res.json([
+    // Static high-quality fallback — not random, not misleading as live AI
+    return res.json([
       {
-        headline: "NGX Index Surges Amid Banking Sector Rally",
-        summary: "The Nigerian equities market recorded significant gains today, driven by strong buying interest in top-tier banking stocks following impressive Q3 earnings reports.",
-        sentiment: "Positive",
-        impact: "Could lead to sustained bullish momentum in the financial sector for the week.",
-        source_url: "#"
-      },
-      {
-        headline: "CBN Retains MPR to Combat Inflation",
-        summary: "The Central Bank of Nigeria has opted to hold the Monetary Policy Rate (MPR) constant at its latest MPC meeting, citing the need to observe the effects of previous hikes.",
+        headline: "NGX market data temporarily unavailable",
+        summary:
+          "Live AI market brief could not be generated. Check portfolio prices via the market data provider, or retry shortly.",
         sentiment: "Neutral",
-        impact: "Fixed income yields will likely stabilize, making T-Bills moderately attractive.",
-        source_url: "#"
+        impact: "No change to your positions from this notice alone.",
+        source_url: "#",
       },
-      {
-        headline: "FMCG Companies Squeeze Margins Over FX Rates",
-        summary: "Major Fast Moving Consumer Goods companies continue to report margin compressions due to the high cost of foreign exchange for raw material imports.",
-        sentiment: "Negative",
-        impact: "Expect potential price target downgrades for high-import reliant manufacturers.",
-        source_url: "#"
-      }
     ]);
   }
 });
 
-router.post("/live-prices", async (req, res) => {
-  const { symbols } = req.body;
-  if (!symbols || symbols.length === 0) return res.json({});
+router.post("/live-prices", async (req: Request, res: Response) => {
+  if (!rateLimit(clientKey(req, "prices"), MAX_PRICES)) {
+    return res.status(429).json({ error: "Too many requests. Try again shortly." });
+  }
+
+  const symbols = req.body?.symbols;
+  if (!Array.isArray(symbols) || symbols.length === 0) {
+    return res.json({});
+  }
+
+  // Cap and sanitize
+  const clean = symbols
+    .filter((s: unknown) => typeof s === "string")
+    .map((s: string) => s.trim().toUpperCase())
+    .filter(Boolean)
+    .slice(0, 30);
 
   try {
-    const prices = await getLivePrices(symbols);
-    res.json(prices);
+    const prices = await getLivePrices(clean);
+    return res.json(prices);
   } catch (e: any) {
-    console.error("AI Error (Live Prices):", e.message || e);
-    // Fallback
-    const fallbacks: Record<string, number> = {};
-    symbols.forEach((s: string) => fallbacks[s] = Math.random() * 500);
-    res.json(fallbacks);
+    console.error("Live prices error:", e.message || e);
+    // Never return random prices — empty object means "unavailable"
+    return res.json({});
   }
+});
+
+router.get("/market-snapshot", async (req: Request, res: Response) => {
+  if (!rateLimit(clientKey(req, "snapshot"), MAX_NEWS)) {
+    return res.status(429).json({ error: "Too many requests." });
+  }
+  const snap = await getMarketSnapshot();
+  if (!snap) return res.status(503).json({ error: "Market snapshot unavailable", status: marketDataStatus() });
+  return res.json(snap);
+});
+
+router.get("/market-status", (_req, res) => {
+  res.json(marketDataStatus());
 });
 
 export default router;
