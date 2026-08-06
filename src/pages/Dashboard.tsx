@@ -44,12 +44,23 @@ export const Dashboard: React.FC = () => {
   const [editingComment, setEditingComment] = useState<ForumComment | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [commentError, setCommentError] = useState<string | null>(null);
+
+  const loadComments = async (postId: string | number) => {
+    try {
+      const res = await apiFetch(`/api/forum/${postId}/comments`);
+      const data = await res.json().catch(() => []);
+      setComments(Array.isArray(data) ? data : []);
+    } catch {
+      setComments([]);
+    }
+  };
 
   const fetchPortfolio = () => {
     if (!user) return;
     apiFetch('/api/portfolio')
       .then(res => res.ok ? res.json() : [])
-      .then(setInvestments)
+      .then(data => setInvestments(Array.isArray(data) ? data : []))
       .catch(() => setInvestments([]));
   };
 
@@ -58,9 +69,9 @@ export const Dashboard: React.FC = () => {
     apiFetch(`/api/forum?page=${page}&limit=5&category=${encodeURIComponent(category)}&search=${encodeURIComponent(search)}`)
       .then(res => res.json())
       .then(data => {
-        setForumPosts(data.posts || []);
-        setTotalPages(data.totalPages || 1);
-        setCurrentPage(data.page || 1);
+        setForumPosts(Array.isArray(data?.posts) ? data.posts : []);
+        setTotalPages(data?.totalPages || 1);
+        setCurrentPage(data?.page || 1);
         setIsFetchingPosts(false);
       })
       .catch(() => {
@@ -74,7 +85,7 @@ export const Dashboard: React.FC = () => {
     fetchPortfolio();
     fetchForumPosts(1, selectedCategory, searchQuery);
     fetchLatestMarketNews().then(news => {
-      setMarketNews(news);
+      setMarketNews(Array.isArray(news) ? news : []);
       setLoadingNews(false);
     });
     apiFetch('/api/learning')
@@ -86,7 +97,7 @@ export const Dashboard: React.FC = () => {
       .catch(() => setLoadingLearn(false));
     apiFetch('/api/forum/trending')
       .then(res => res.json())
-      .then(setTrendingPosts)
+      .then(data => setTrendingPosts(Array.isArray(data) ? data : []))
       .catch(() => setTrendingPosts([]));
   }, [user]);
 
@@ -100,7 +111,7 @@ export const Dashboard: React.FC = () => {
     const symbols = investments.filter(i => i.type === 'stock').map(i => i.symbol);
     if (symbols.length > 0) {
       fetchLivePrices(Array.from(new Set(symbols))).then(prices => {
-        if (Object.keys(prices).length > 0) {
+        if (prices && Object.keys(prices).length > 0) {
           setLivePrices(prices);
         }
       });
@@ -108,11 +119,10 @@ export const Dashboard: React.FC = () => {
   }, [investments]);
 
   useEffect(() => {
-    if (selectedPost) {
-      apiFetch(`/api/forum/${selectedPost.id}/comments`)
-        .then(res => res.json())
-        .then(setComments)
-        .catch(() => setComments([]));
+    if (selectedPost?.id != null) {
+      loadComments(selectedPost.id);
+    } else {
+      setComments([]);
     }
   }, [selectedPost]);
 
@@ -132,7 +142,7 @@ export const Dashboard: React.FC = () => {
     
     try {
       await apiFetch(`/api/forum/${postId}/like`, { method: 'POST', body: '{}' });
-      apiFetch('/api/forum/trending').then(r => r.json()).then(setTrendingPosts);
+      apiFetch('/api/forum/trending').then(r => r.json()).then(d => setTrendingPosts(Array.isArray(d) ? d : []));
     } catch {
       fetchForumPosts();
     }
@@ -151,33 +161,50 @@ export const Dashboard: React.FC = () => {
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPost || !newComment.trim() || !user) return;
+    setCommentError(null);
 
-    if (editingComment) {
-      await apiFetch(`/api/forum/comments/${editingComment.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ content: newComment })
-      });
-      setEditingComment(null);
-    } else {
-      await apiFetch(`/api/forum/${selectedPost.id}/comments`, {
-        method: 'POST',
-        body: JSON.stringify({ 
-          content: newComment,
-          quoted_comment: quotedComment ? `${quotedComment.username} posted:\n\n"${quotedComment.content}"` : null
-        })
-      });
+    try {
+      let res: Response;
+      if (editingComment) {
+        res = await apiFetch(`/api/forum/comments/${editingComment.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ content: newComment })
+        });
+        setEditingComment(null);
+      } else {
+        res = await apiFetch(`/api/forum/${selectedPost.id}/comments`, {
+          method: 'POST',
+          body: JSON.stringify({ 
+            content: newComment,
+            quoted_comment: quotedComment ? `${quotedComment.username || 'Investor'} posted:\n\n"${quotedComment.content}"` : null
+          })
+        });
+      }
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setCommentError(body?.error || `Could not post reply (${res.status})`);
+        return;
+      }
+
+      setNewComment('');
+      setQuotedComment(null);
+      await loadComments(selectedPost.id);
+    } catch (err: any) {
+      console.error('Comment error:', err);
+      setCommentError(err?.message || 'Could not post reply. Please try again.');
     }
-
-    setNewComment('');
-    setQuotedComment(null);
-    apiFetch(`/api/forum/${selectedPost.id}/comments`).then(res => res.json()).then(setComments);
   };
 
   const handleDeleteComment = async (commentId: string | number) => {
     if (!selectedPost || !user) return;
     if (window.confirm('Delete this comment?')) {
-      await apiFetch(`/api/forum/comments/${commentId}?post_id=${selectedPost.id}`, { method: 'DELETE' });
-      apiFetch(`/api/forum/${selectedPost.id}/comments`).then(res => res.json()).then(setComments);
+      try {
+        await apiFetch(`/api/forum/comments/${commentId}?post_id=${selectedPost.id}`, { method: 'DELETE' });
+        await loadComments(selectedPost.id);
+      } catch {
+        setCommentError('Could not delete comment');
+      }
     }
   };
 
@@ -265,6 +292,12 @@ export const Dashboard: React.FC = () => {
       />
 
       <main className="max-w-7xl mx-auto p-6 md:p-8">
+        {commentError && (
+          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 text-rose-700 px-4 py-3 text-sm flex justify-between gap-4">
+            <span>{commentError}</span>
+            <button type="button" className="font-bold" onClick={() => setCommentError(null)}>Dismiss</button>
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-8">
             <AnimatePresence mode="wait">
