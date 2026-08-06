@@ -11,16 +11,17 @@ import { NewsPage } from './NewsPage';
 import { LearningPage } from './LearningPage';
 import { AddInvestmentModal } from '../components/AddInvestmentModal';
 import { CreatePostModal } from '../components/CreatePostModal';
-import { 
-  Bell, Mail, Search, MessageSquare, TrendingUp, BookOpen 
-} from 'lucide-react';
 
 export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
+  
+  // Separate modal states
+  const [showAddInvestmentModal, setShowAddInvestmentModal] = useState(false);
+  const [showCreatePostModal, setShowCreatePostModal] = useState(false);
   const [editingInvestment, setEditingInvestment] = useState<Investment | null>(null);
   const [editingPost, setEditingPost] = useState<ForumPost | null>(null);
+  
   const [activeTab, setActiveTab] = useState('portfolio');
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [forumPosts, setForumPosts] = useState<ForumPost[]>([]);
@@ -215,7 +216,7 @@ export const Dashboard: React.FC = () => {
       })
     });
 
-    setShowAddModal(false); // Reusing for post creation
+    setShowCreatePostModal(false);
     setEditingPost(null);
     fetchForumPosts();
   };
@@ -236,7 +237,7 @@ export const Dashboard: React.FC = () => {
       })
     });
 
-    setShowAddModal(false);
+    setShowAddInvestmentModal(false);
     setEditingInvestment(null);
     fetchPortfolio();
   };
@@ -269,7 +270,7 @@ export const Dashboard: React.FC = () => {
                   livePrices={livePrices}
                   searchQuery={searchQuery}
                   setSearchQuery={setSearchQuery}
-                  setShowAddModal={setShowAddModal}
+                  setShowAddModal={setShowAddInvestmentModal}
                   setEditingInvestment={setEditingInvestment}
                   handleDeleteInvestment={handleDeleteInvestment}
                   totalValue={totalValue}
@@ -289,8 +290,8 @@ export const Dashboard: React.FC = () => {
                   setSelectedCategory={setSelectedCategory}
                   searchQuery={searchQuery}
                   setSearchQuery={setSearchQuery}
-                  setShowCreatePostModal={setShowAddModal} // Reusing for post creation
-                  setEditingPost={setEditingInvestment as any} // Reusing... this might need a separate state
+                  setShowCreatePostModal={setShowCreatePostModal}
+                  setEditingPost={setEditingPost}
                   selectedPost={selectedPost}
                   setSelectedPost={setSelectedPost}
                   comments={comments}
@@ -351,15 +352,15 @@ export const Dashboard: React.FC = () => {
       </main>
 
       <AddInvestmentModal 
-        isOpen={showAddModal && activeTab === 'portfolio'}
-        onClose={() => { setShowAddModal(false); setEditingInvestment(null); }}
+        isOpen={showAddInvestmentModal}
+        onClose={() => { setShowAddInvestmentModal(false); setEditingInvestment(null); }}
         editingInvestment={editingInvestment}
         onConfirm={handleAddInvestment}
       />
 
       <CreatePostModal 
-        isOpen={showAddModal && activeTab === 'forum'}
-        onClose={() => { setShowAddModal(false); setEditingPost(null); }}
+        isOpen={showCreatePostModal}
+        onClose={() => { setShowCreatePostModal(false); setEditingPost(null); }}
         editingPost={editingPost}
         onConfirm={handleCreatePost}
       />
