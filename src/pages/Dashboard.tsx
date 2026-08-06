@@ -5,6 +5,7 @@ import { Navigation } from '../components/Navigation';
 import { MarketIntelligence } from '../components/MarketIntelligence';
 import { MarketNews, Investment, ForumPost, ForumComment, LearningContent } from '../types';
 import { fetchLatestMarketNews, fetchLivePrices } from '../services/geminiService';
+import { apiFetch } from '../lib/api';
 import { PortfolioPage } from './PortfolioPage';
 import { ForumPage } from './ForumPage';
 import { NewsPage } from './NewsPage';
@@ -16,7 +17,6 @@ export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [showProfileModal, setShowProfileModal] = useState(false);
   
-  // Separate modal states
   const [showAddInvestmentModal, setShowAddInvestmentModal] = useState(false);
   const [showCreatePostModal, setShowCreatePostModal] = useState(false);
   const [editingInvestment, setEditingInvestment] = useState<Investment | null>(null);
@@ -34,7 +34,6 @@ export const Dashboard: React.FC = () => {
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
   const [selectedLesson, setSelectedLesson] = useState<LearningContent | null>(null);
 
-  // Forum States
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedPost, setSelectedPost] = useState<ForumPost | null>(null);
   const [comments, setComments] = useState<ForumComment[]>([]);
@@ -48,17 +47,24 @@ export const Dashboard: React.FC = () => {
 
   const fetchPortfolio = () => {
     if (!user) return;
-    fetch(`/api/portfolio?user_id=${user.uid}`).then(res => res.json()).then(setInvestments);
+    apiFetch('/api/portfolio')
+      .then(res => res.ok ? res.json() : [])
+      .then(setInvestments)
+      .catch(() => setInvestments([]));
   };
 
   const fetchForumPosts = (page = 1, category = selectedCategory, search = searchQuery) => {
     setIsFetchingPosts(true);
-    fetch(`/api/forum?page=${page}&limit=5&category=${category}&search=${search}`)
+    apiFetch(`/api/forum?page=${page}&limit=5&category=${encodeURIComponent(category)}&search=${encodeURIComponent(search)}`)
       .then(res => res.json())
       .then(data => {
-        setForumPosts(data.posts);
-        setTotalPages(data.totalPages);
-        setCurrentPage(data.page);
+        setForumPosts(data.posts || []);
+        setTotalPages(data.totalPages || 1);
+        setCurrentPage(data.page || 1);
+        setIsFetchingPosts(false);
+      })
+      .catch(() => {
+        setForumPosts([]);
         setIsFetchingPosts(false);
       });
   };
@@ -71,15 +77,17 @@ export const Dashboard: React.FC = () => {
       setMarketNews(news);
       setLoadingNews(false);
     });
-    fetch('/api/learning')
+    apiFetch('/api/learning')
       .then(res => res.json())
       .then(data => {
-        setLearningContent(data);
+        setLearningContent(Array.isArray(data) ? data : []);
         setLoadingLearn(false);
-      });
-    fetch('/api/forum/trending')
+      })
+      .catch(() => setLoadingLearn(false));
+    apiFetch('/api/forum/trending')
       .then(res => res.json())
-      .then(setTrendingPosts);
+      .then(setTrendingPosts)
+      .catch(() => setTrendingPosts([]));
   }, [user]);
 
   useEffect(() => {
@@ -101,9 +109,10 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     if (selectedPost) {
-      fetch(`/api/forum/${selectedPost.id}/comments`)
+      apiFetch(`/api/forum/${selectedPost.id}/comments`)
         .then(res => res.json())
-        .then(setComments);
+        .then(setComments)
+        .catch(() => setComments([]));
     }
   }, [selectedPost]);
 
@@ -111,7 +120,6 @@ export const Dashboard: React.FC = () => {
     e.stopPropagation();
     if (!user) return;
     
-    // Optimistic update
     const updateLikes = (p: ForumPost) => {
       const likes = [...(p.likes || [])];
       const idx = likes.indexOf(user.uid);
@@ -123,13 +131,9 @@ export const Dashboard: React.FC = () => {
     setForumPosts(posts => posts.map(p => p.id === postId ? updateLikes(p) : p));
     
     try {
-      await fetch(`/api/forum/${postId}/like`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.uid })
-      });
-      fetch('/api/forum/trending').then(r => r.json()).then(setTrendingPosts);
-    } catch (e) {
+      await apiFetch(`/api/forum/${postId}/like`, { method: 'POST', body: '{}' });
+      apiFetch('/api/forum/trending').then(r => r.json()).then(setTrendingPosts);
+    } catch {
       fetchForumPosts();
     }
   };
@@ -149,20 +153,16 @@ export const Dashboard: React.FC = () => {
     if (!selectedPost || !newComment.trim() || !user) return;
 
     if (editingComment) {
-      await fetch(`/api/forum/comments/${editingComment.id}`, {
+      await apiFetch(`/api/forum/comments/${editingComment.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newComment, user_id: user.uid })
+        body: JSON.stringify({ content: newComment })
       });
       setEditingComment(null);
     } else {
-      await fetch(`/api/forum/${selectedPost.id}/comments`, {
+      await apiFetch(`/api/forum/${selectedPost.id}/comments`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           content: newComment,
-          username: user.displayName || user.email?.split('@')[0],
-          user_id: user.uid,
           quoted_comment: quotedComment ? `${quotedComment.username} posted:\n\n"${quotedComment.content}"` : null
         })
       });
@@ -170,20 +170,20 @@ export const Dashboard: React.FC = () => {
 
     setNewComment('');
     setQuotedComment(null);
-    fetch(`/api/forum/${selectedPost.id}/comments`).then(res => res.json()).then(setComments);
+    apiFetch(`/api/forum/${selectedPost.id}/comments`).then(res => res.json()).then(setComments);
   };
 
   const handleDeleteComment = async (commentId: string | number) => {
     if (!selectedPost || !user) return;
     if (window.confirm('Delete this comment?')) {
-      await fetch(`/api/forum/comments/${commentId}?user_id=${user.uid}&post_id=${selectedPost.id}`, { method: 'DELETE' });
-      fetch(`/api/forum/${selectedPost.id}/comments`).then(res => res.json()).then(setComments);
+      await apiFetch(`/api/forum/comments/${commentId}?post_id=${selectedPost.id}`, { method: 'DELETE' });
+      apiFetch(`/api/forum/${selectedPost.id}/comments`).then(res => res.json()).then(setComments);
     }
   };
 
   const handleDeleteInvestment = async (id: string | number) => {
     if (window.confirm('Delete this investment?')) {
-      await fetch(`/api/investments/${id}?user_id=${user?.uid}`, { method: 'DELETE' });
+      await apiFetch(`/api/portfolio/${id}`, { method: 'DELETE' });
       fetchPortfolio();
     }
   };
@@ -191,7 +191,7 @@ export const Dashboard: React.FC = () => {
   const handleDeletePost = async (e: React.MouseEvent, postId: string | number) => {
     e.stopPropagation();
     if (window.confirm('Delete this discussion?')) {
-      await fetch(`/api/forum/${postId}?user_id=${user?.uid}`, { method: 'DELETE' });
+      await apiFetch(`/api/forum/${postId}`, { method: 'DELETE' });
       fetchForumPosts();
       if (selectedPost?.id === postId) setSelectedPost(null);
     }
@@ -206,14 +206,9 @@ export const Dashboard: React.FC = () => {
     const url = editingPost ? `/api/forum/${editingPost.id}` : '/api/forum';
     const method = editingPost ? 'PUT' : 'POST';
 
-    await fetch(url, {
+    await apiFetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...data,
-        username: user.displayName || user.email?.split('@')[0],
-        user_id: user.uid
-      })
+      body: JSON.stringify(data)
     });
 
     setShowCreatePostModal(false);
@@ -223,17 +218,15 @@ export const Dashboard: React.FC = () => {
 
   const handleAddInvestment = async (data: any) => {
     if (!user) return;
-    const url = editingInvestment ? `/api/investments/${editingInvestment.id}` : '/api/investments';
+    const url = editingInvestment ? `/api/portfolio/${editingInvestment.id}` : '/api/portfolio';
     const method = editingInvestment ? 'PUT' : 'POST';
     
-    await fetch(url, {
-      method: method,
-      headers: { 'Content-Type': 'application/json' },
+    await apiFetch(url, {
+      method,
       body: JSON.stringify({
         ...data,
         entry_price: Number(data.entry_price),
         quantity: Number(data.quantity),
-        user_id: user.uid
       })
     });
 
@@ -242,7 +235,6 @@ export const Dashboard: React.FC = () => {
     fetchPortfolio();
   };
 
-  // Portfolio calculations
   const totalValue = investments.reduce((acc, inv) => {
     const cp = inv.type === 'stock' ? (livePrices[inv.symbol] || inv.entry_price) : inv.entry_price;
     return acc + (cp * inv.quantity);
