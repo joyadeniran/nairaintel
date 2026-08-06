@@ -6,3 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local databases — never commit
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+nairaintel.db
