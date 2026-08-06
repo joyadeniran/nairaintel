@@ -14,7 +14,10 @@ interface PortfolioPageProps {
   setEditingInvestment: (i: Investment | null) => void;
   handleDeleteInvestment: (id: string | number) => void;
   totalValue: number;
+  totalCost: number;
   mockGain: number;
+  stockValue: number;
+  fixedIncomeValue: number;
   trendingPosts: ForumPost[];
   setActiveTab: (tab: string) => void;
   setSelectedPost: (post: ForumPost) => void;
@@ -30,8 +33,10 @@ export const PortfolioPage: React.FC<PortfolioPageProps> = (props) => {
     >
       <PortfolioSummary 
         totalValue={props.totalValue}
+        totalCost={props.totalCost}
         mockGain={props.mockGain}
-        mockTotalReturn={13.4}
+        stockValue={props.stockValue}
+        fixedIncomeValue={props.fixedIncomeValue}
       />
       
       <div className="premium-card p-8 md:p-12 overflow-hidden">
