@@ -252,13 +252,50 @@ export async function getMarketSnapshot(): Promise<any | null> {
   return snapshotCache?.data ?? null;
 }
 
+/**
+ * Actively test the NGN Market connection (for diagnostics on cold serverless instances).
+ */
+export async function probeMarketConnection(): Promise<{
+  ok: boolean;
+  sample: Record<string, number>;
+  error?: any;
+}> {
+  log("info", "probeMarketConnection started");
+  const { ok, status, body } = await ngnFetch(
+    "/companies?search=DANGCEM&limit=5"
+  );
+
+  if (!ok) {
+    return {
+      ok: false,
+      sample: {},
+      error: body?.error || { status, body },
+    };
+  }
+
+  const map = companiesToPriceMap(body);
+  const sample = Object.fromEntries(Object.entries(map).slice(0, 5));
+
+  // Also try bulk for cache warmup
+  await fetchBulkPriceMap();
+
+  return {
+    ok: Object.keys(map).length > 0,
+    sample,
+    error:
+      Object.keys(map).length === 0
+        ? { code: "PARSE_EMPTY", message: "API OK but no prices parsed", bodyKeys: body && Object.keys(body) }
+        : undefined,
+  };
+}
+
 export function marketDataStatus() {
   const key = getApiKey();
   return {
     provider: key ? "ngnmarket" : "none",
     key_configured: !!key,
     key_prefix: key ? key.slice(0, 12) + "…" : null,
-    key_looks_valid: key ? /^ngm(arket)?_|^ngnm_|^ngm_/.test(key) || key.startsWith("ngm_") : false,
+    key_looks_valid: key ? key.startsWith("ngm_") : false,
     docs: {
       base: NGNMARKET_BASE,
       auth: "Authorization: Bearer ngm_live_…",
