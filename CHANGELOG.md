@@ -2,6 +2,11 @@
 
 All notable changes to NairaIntel will be documented in this file.
 
+## [2026-08-06] - Product Specification
+
+### Added
+- `SPEC.md` — Official product specification covering strategic positioning, target user, core pillars, feature scope rules, and guiding principles
+
 ## [2026-08-06] - Portfolio, Market Intel & Polish
 
 ### Portfolio Experience
