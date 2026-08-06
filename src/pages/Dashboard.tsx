@@ -242,12 +242,25 @@ export const Dashboard: React.FC = () => {
     fetchPortfolio();
   };
 
+  // Portfolio calculations
   const totalValue = investments.reduce((acc, inv) => {
     const cp = inv.type === 'stock' ? (livePrices[inv.symbol] || inv.entry_price) : inv.entry_price;
     return acc + (cp * inv.quantity);
   }, 0);
+  
   const totalCost = investments.reduce((acc, inv) => acc + (inv.entry_price * inv.quantity), 0);
   const mockGain = totalValue - totalCost;
+  
+  const stockValue = investments
+    .filter(i => i.type === 'stock')
+    .reduce((acc, inv) => {
+      const cp = livePrices[inv.symbol] || inv.entry_price;
+      return acc + (cp * inv.quantity);
+    }, 0);
+    
+  const fixedIncomeValue = investments
+    .filter(i => i.type === 'tbill')
+    .reduce((acc, inv) => acc + (inv.entry_price * inv.quantity), 0);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-black transition-colors duration-500">
@@ -274,7 +287,10 @@ export const Dashboard: React.FC = () => {
                   setEditingInvestment={setEditingInvestment}
                   handleDeleteInvestment={handleDeleteInvestment}
                   totalValue={totalValue}
+                  totalCost={totalCost}
                   mockGain={mockGain}
+                  stockValue={stockValue}
+                  fixedIncomeValue={fixedIncomeValue}
                   trendingPosts={trendingPosts}
                   setActiveTab={setActiveTab}
                   setSelectedPost={setSelectedPost}
