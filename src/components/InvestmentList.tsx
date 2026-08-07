@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Plus, Edit2, Trash2, TrendingUp } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, TrendingUp, BarChart3, Landmark } from 'lucide-react';
 import { Investment } from '../types';
 
 interface InvestmentListProps {
@@ -31,13 +31,13 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
   setEditingInvestment,
   handleDeleteInvestment
 }) => {
-  const stocks = investments.filter(i => i.type === 'stock').filter(i => 
-    i.symbol.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  const stocks = investments.filter(i => i.type === 'stock').filter(i =>
+    i.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
     i.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const tbills = investments.filter(i => i.type === 'tbill').filter(i => 
-    i.symbol.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  const tbills = investments.filter(i => i.type === 'tbill').filter(i =>
+    i.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
     i.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -48,27 +48,37 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h3 className="text-xl font-display font-bold text-slate-900 dark:text-white">Holdings</h3>
+          <h3 className="text-xl font-display font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <BarChart3 size={20} className="text-brand-green" />
+            Holdings
+          </h3>
           {stocks.length > 0 && (
-            <p className="text-xs text-slate-500 mt-1">
-              {liveCount > 0
-                ? `Live NGX prices on ${liveCount}/${stocks.length} stocks`
-                : 'Using entry prices — live NGX feed not applied yet'}
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 ml-7">
+              {liveCount > 0 ? (
+                <>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Live prices on {liveCount}/{stocks.length} stocks
+                  </span>
+                </>
+              ) : (
+                'Using entry prices — live NGX feed connecting...'
+              )}
             </p>
           )}
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input 
+            <input
               type="text"
               placeholder="Search holdings..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-4 focus:ring-brand-green/10 text-sm w-48 transition-all text-slate-800 dark:text-white"
+              className="pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green/30 text-sm w-48 transition-all text-slate-800 dark:text-white"
             />
           </div>
-          <button 
+          <button
             onClick={() => { setEditingInvestment(null); setShowAddModal(true); }}
             className="glow-button flex items-center gap-2 px-5 py-2.5 text-sm"
           >
@@ -78,20 +88,20 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
       </div>
 
       {!hasAny ? (
-        <div className="py-16 text-center premium-card bg-white dark:bg-slate-900">
-          <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 dark:text-slate-600">
-            <Search size={28} />
+        <div className="py-20 text-center">
+          <div className="w-20 h-20 bg-gradient-to-br from-brand-green/10 to-brand-gold/10 dark:from-brand-green/15 dark:to-brand-gold/15 rounded-3xl flex items-center justify-center mx-auto mb-6 rotate-6">
+            <BarChart3 size={36} className="text-brand-green -rotate-6" />
           </div>
-          <p className="text-lg font-display font-bold text-slate-500 dark:text-slate-400 mb-2">
-            {searchQuery ? 'No matching holdings' : 'No assets yet'}
-          </p>
-          <p className="text-sm text-slate-400 dark:text-slate-500 mb-6 max-w-md mx-auto">
+          <h4 className="text-xl font-display font-bold text-slate-700 dark:text-slate-300 mb-2">
+            {searchQuery ? 'No matching holdings' : 'Build your portfolio'}
+          </h4>
+          <p className="text-sm text-slate-400 dark:text-slate-500 mb-8 max-w-sm mx-auto leading-relaxed">
             {searchQuery
               ? 'Try a different search term.'
-              : 'Add a stock (e.g. DANGCEM, MTNN, GTCO) to see live NGX market prices in your portfolio.'}
+              : 'Add NGX stocks like DANGCEM, MTNN, or GTCO to track live market prices and P&L.'}
           </p>
           {!searchQuery && (
-            <button 
+            <button
               onClick={() => { setEditingInvestment(null); setShowAddModal(true); }}
               className="glow-button inline-flex items-center gap-2"
             >
@@ -102,18 +112,18 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
       ) : (
         <>
           {stocks.length > 0 && (
-            <div className="premium-card bg-white dark:bg-slate-900 overflow-hidden">
+            <div className="rounded-3xl border border-slate-100 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900/50">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-100 dark:border-slate-800">
-                      <th className="px-6 py-4 text-left text-[10px] font-display font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Asset</th>
-                      <th className="px-6 py-4 text-left text-[10px] font-display font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Entry / Market</th>
-                      <th className="px-6 py-4 text-right text-[10px] font-display font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Qty</th>
-                      <th className="px-6 py-4 text-right text-[10px] font-display font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Value & P&L</th>
+                    <tr className="border-b border-slate-100 dark:border-slate-800">
+                      <th className="px-6 py-3.5 text-left text-[10px] font-display font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Asset</th>
+                      <th className="px-6 py-3.5 text-left text-[10px] font-display font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest hidden sm:table-cell">Entry / Market</th>
+                      <th className="px-6 py-3.5 text-right text-[10px] font-display font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest hidden md:table-cell">Qty</th>
+                      <th className="px-6 py-3.5 text-right text-[10px] font-display font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Value & P&L</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
                     {stocks.map((inv) => {
                       const { marketPrice, hasLive } = resolveMarketPrice(inv, livePrices);
                       const marketValue = marketPrice * inv.quantity;
@@ -123,10 +133,14 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
                       const isUp = pnl >= 0;
 
                       return (
-                        <tr key={inv.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
+                        <tr key={inv.id} className="group hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-brand-green/10 flex items-center justify-center text-xs font-display font-bold text-brand-green">
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xs font-display font-bold ${
+                                hasLive
+                                  ? 'bg-brand-green/10 dark:bg-brand-green/15 text-brand-green'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                              }`}>
                                 {inv.symbol.substring(0, 2).toUpperCase()}
                               </div>
                               <div>
@@ -134,19 +148,22 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
                                 <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-2">
                                   {inv.symbol}
                                   {hasLive && (
-                                    <span className="text-emerald-500 normal-case tracking-normal">Live</span>
+                                    <span className="inline-flex items-center gap-1 text-emerald-500 normal-case tracking-normal">
+                                      <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                                      Live
+                                    </span>
                                   )}
                                 </p>
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-6 py-4 hidden sm:table-cell">
                             <p className="text-sm font-bold text-slate-800 dark:text-white">₦{Number(inv.entry_price).toLocaleString()}</p>
-                            <p className={`text-[11px] font-bold ${hasLive ? (isUp ? 'text-emerald-500' : 'text-rose-500') : 'text-slate-400'}`}>
+                            <p className={`text-[11px] font-bold ${hasLive ? (isUp ? 'text-emerald-500' : 'text-rose-500') : 'text-slate-400 dark:text-slate-500'}`}>
                               Mkt: ₦{marketPrice.toLocaleString()}{!hasLive ? ' (entry)' : ''}
                             </p>
                           </td>
-                          <td className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-400">
+                          <td className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-400 hidden md:table-cell">
                             {Number(inv.quantity).toLocaleString()}
                           </td>
                           <td className="px-6 py-4">
@@ -159,19 +176,16 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
                                   {isUp ? '+' : ''}{pnlPct.toFixed(1)}% · {isUp ? '+' : ''}₦{Math.abs(pnl).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </p>
                               </div>
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button 
-                                  onClick={() => {
-                                    setEditingInvestment(inv);
-                                    setShowAddModal(true);
-                                  }}
-                                  className="p-2 text-slate-400 dark:text-slate-500 hover:text-brand-green dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 rounded-lg shadow-sm transition-all"
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => { setEditingInvestment(inv); setShowAddModal(true); }}
+                                  className="p-2 text-slate-400 dark:text-slate-500 hover:text-brand-green dark:hover:text-brand-green-light rounded-lg transition-colors"
                                 >
                                   <Edit2 size={14} />
                                 </button>
-                                <button 
+                                <button
                                   onClick={() => handleDeleteInvestment(inv.id)}
-                                  className="p-2 text-slate-400 dark:text-slate-500 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-white dark:hover:bg-slate-700 rounded-lg shadow-sm transition-all"
+                                  className="p-2 text-slate-400 dark:text-slate-500 hover:text-rose-500 rounded-lg transition-colors"
                                 >
                                   <Trash2 size={14} />
                                 </button>
@@ -189,15 +203,16 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
 
           {tbills.length > 0 && (
             <div className="space-y-4">
-              <h4 className="text-xs font-display font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-2">
+              <h4 className="text-xs font-display font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-2">
+                <Landmark size={14} />
                 Fixed Income
               </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {tbills.map(inv => (
-                  <div key={inv.id} className="group p-5 premium-card bg-white dark:bg-slate-900 flex items-center justify-between">
+                  <div key={inv.id} className="group p-5 rounded-2xl bg-white dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 hover:border-brand-green/20 dark:hover:border-brand-green/20 flex items-center justify-between transition-all">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center">
-                        <TrendingUp size={22} />
+                      <div className="w-11 h-11 bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center justify-center">
+                        <TrendingUp size={20} />
                       </div>
                       <div>
                         <p className="text-sm font-display font-bold text-slate-900 dark:text-white">{inv.name}</p>
@@ -215,16 +230,16 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
                           Face Value
                         </p>
                       </div>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => { setEditingInvestment(inv); setShowAddModal(true); }} 
-                          className="p-2 text-slate-400 dark:text-slate-500 hover:text-brand-green dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-all"
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => { setEditingInvestment(inv); setShowAddModal(true); }}
+                          className="p-2 text-slate-400 dark:text-slate-500 hover:text-brand-green rounded-lg transition-colors"
                         >
                           <Edit2 size={14} />
                         </button>
-                        <button 
-                          onClick={() => handleDeleteInvestment(inv.id)} 
-                          className="p-2 text-slate-400 dark:text-slate-500 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-all"
+                        <button
+                          onClick={() => handleDeleteInvestment(inv.id)}
+                          className="p-2 text-slate-400 dark:text-slate-500 hover:text-rose-500 rounded-lg transition-colors"
                         >
                           <Trash2 size={14} />
                         </button>

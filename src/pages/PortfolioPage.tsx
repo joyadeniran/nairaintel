@@ -25,30 +25,32 @@ interface PortfolioPageProps {
 
 export const PortfolioPage: React.FC<PortfolioPageProps> = (props) => {
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      className="space-y-12"
+      className="space-y-8"
     >
-      <PortfolioSummary 
+      <PortfolioSummary
         totalValue={props.totalValue}
         totalCost={props.totalCost}
         mockGain={props.mockGain}
         stockValue={props.stockValue}
         fixedIncomeValue={props.fixedIncomeValue}
       />
-      
-      <div className="premium-card p-8 md:p-12 overflow-hidden">
+
+      <div className="premium-card p-6 md:p-10 overflow-hidden">
         <InvestmentList {...props} />
-        
-        <div className="mt-16 pt-12 border-t border-slate-100 dark:border-slate-800">
-          <CommunityOverview 
-            trendingPosts={props.trendingPosts} 
-            setActiveTab={props.setActiveTab}
-            setSelectedPost={props.setSelectedPost}
-          />
-        </div>
+
+        {props.trendingPosts.length > 0 && (
+          <div className="mt-12 pt-10 border-t border-slate-100 dark:border-slate-800">
+            <CommunityOverview
+              trendingPosts={props.trendingPosts}
+              setActiveTab={props.setActiveTab}
+              setSelectedPost={props.setSelectedPost}
+            />
+          </div>
+        )}
       </div>
     </motion.div>
   );

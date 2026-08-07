@@ -338,7 +338,7 @@ export const Dashboard: React.FC = () => {
     .reduce((acc, inv) => acc + (Number(inv.entry_price) * Number(inv.quantity)), 0);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-black transition-colors duration-500">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0a0f1a] transition-colors duration-300">
       <Navigation 
         user={user} 
         activeTab={activeTab} 
@@ -347,7 +347,7 @@ export const Dashboard: React.FC = () => {
         setShowProfileModal={setShowProfileModal}
       />
 
-      <main className="max-w-7xl mx-auto p-6 md:p-8">
+      <main className="max-w-7xl mx-auto px-4 md:px-8 pt-4 md:pt-8 pb-6">
         {(commentError || portfolioError) && (
           <div className="mb-4 rounded-2xl border border-rose-200 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 px-4 py-3 text-sm flex justify-between gap-4">
             <span>{commentError || portfolioError}</span>
@@ -433,13 +433,13 @@ export const Dashboard: React.FC = () => {
               setActiveTab={setActiveTab}
             />
 
-            <section className="premium-card p-8 group overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-brand-green/5 dark:bg-brand-green/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-500" />
-              <h3 className="text-xl font-display font-bold text-slate-900 dark:text-white mb-2 relative z-10">Learning Path</h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 relative z-10 font-medium">Master the markets with our curated guides.</p>
-              <button 
+            <section className="rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-7 group overflow-hidden relative">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-brand-green/5 dark:bg-brand-green/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-125 transition-transform duration-500" />
+              <h3 className="text-lg font-display font-bold text-slate-900 dark:text-white mb-1.5 relative z-10">Learning Path</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-5 relative z-10">Master the markets with curated guides.</p>
+              <button
                 onClick={() => setActiveTab('learn')}
-                className="w-full py-4 bg-slate-900 dark:bg-brand-green text-white rounded-2xl font-display font-bold text-sm hover:bg-brand-green transition-all shadow-lg shadow-slate-900/20 relative z-10"
+                className="w-full py-3 bg-slate-900 dark:bg-slate-800 text-white rounded-xl font-display font-bold text-sm hover:bg-slate-800 dark:hover:bg-slate-700 transition-all relative z-10"
               >
                 Go to Hub
               </button>

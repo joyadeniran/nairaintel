@@ -23,14 +23,13 @@ export const ForumPostCard: React.FC<ForumPostCardProps> = ({
   onLike,
   onEdit,
   onDelete,
-  onShare
 }) => {
   return (
-    <div 
+    <div
       onClick={() => onSelect(post)}
-      className="group cursor-pointer p-8 rounded-[2rem] bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none hover:border-brand-green/30 transition-all"
+      className="group cursor-pointer p-6 md:p-8 rounded-3xl bg-white dark:bg-slate-900/80 border border-slate-100 dark:border-slate-800 hover:border-brand-green/20 dark:hover:border-brand-green/20 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-none transition-all duration-300"
     >
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-2 mb-4">
         <span className="text-[10px] font-display font-bold text-brand-green bg-brand-green/5 dark:bg-brand-green/10 px-3 py-1 rounded-full uppercase tracking-widest border border-brand-green/10">
           {post.category}
         </span>
@@ -40,55 +39,55 @@ export const ForumPostCard: React.FC<ForumPostCardProps> = ({
           </span>
         )}
       </div>
-      
-      <h4 className="text-xl font-display font-bold text-slate-800 dark:text-white group-hover:text-brand-green transition-colors mb-3 leading-tight">
+
+      <h4 className="text-lg font-display font-bold text-slate-800 dark:text-white group-hover:text-brand-green transition-colors mb-2.5 leading-snug">
         {post.title}
       </h4>
-      
+
       <p className="text-slate-500 dark:text-slate-400 line-clamp-2 mb-6 text-sm leading-relaxed">
         {post.content}
       </p>
-      
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 text-xs">
-          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden border border-white dark:border-slate-800 shadow-sm">
+          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden border-2 border-white dark:border-slate-800 shadow-sm">
             <img src={`https://picsum.photos/seed/${post.username}/32/32`} alt="" referrerPolicy="no-referrer" />
           </div>
           <div>
             <p className="font-bold text-slate-700 dark:text-slate-300">{post.username}</p>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">
               {new Date(post.created_at).toLocaleDateString()}
             </p>
           </div>
         </div>
-        
-        <div className="flex items-center gap-4 text-slate-400 dark:text-slate-500">
+
+        <div className="flex items-center gap-3 text-slate-400 dark:text-slate-500">
           {user?.uid === post.user_id && (
-            <div className="flex items-center gap-2 mr-2">
-              <button 
+            <div className="flex items-center gap-1 mr-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
                 onClick={(e) => { e.stopPropagation(); onEdit(post); }}
-                className="p-2 hover:text-brand-green hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all"
+                className="p-2 hover:text-brand-green rounded-lg transition-colors"
               >
                 <Edit2 size={14} />
               </button>
-              <button 
+              <button
                 onClick={(e) => onDelete(e, post.id)}
-                className="p-2 hover:text-rose-500 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all"
+                className="p-2 hover:text-rose-500 rounded-lg transition-colors"
               >
                 <Trash2 size={14} />
               </button>
             </div>
           )}
-          
-          <button 
+
+          <button
             onClick={(e) => onLike(e, post.id)}
             className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${isLiked ? 'text-brand-green' : 'hover:text-brand-green'}`}
           >
-            <ThumbsUp size={16} fill={isLiked ? 'currentColor' : 'none'} /> {post.likes?.length || 0}
+            <ThumbsUp size={15} fill={isLiked ? 'currentColor' : 'none'} /> {post.likes?.length || 0}
           </button>
-          
+
           <span className="flex items-center gap-1.5 text-xs font-bold">
-            <MessageSquare size={16} /> {post.comment_count || 0}
+            <MessageSquare size={15} /> {post.comment_count || 0}
           </span>
         </div>
       </div>
