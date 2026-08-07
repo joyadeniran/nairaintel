@@ -1,18 +1,25 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { getMarketNews } from "../services/ai.js";
 import {
   getLivePrices,
   getMarketSnapshot,
-  marketDataStatus,
   probeMarketConnection,
 } from "../services/marketData.js";
+import { requireAuth, AuthedRequest } from "../middleware/auth.js";
 
 const router = Router();
+
+function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    fn(req, res, next).catch(next);
+  };
+}
 
 const buckets = new Map<string, { count: number; reset: number }>();
 const WINDOW_MS = 60_000;
 const MAX_NEWS = 10;
 const MAX_PRICES = 30;
+const BUCKET_CLEANUP_INTERVAL = 5 * 60_000;
 
 function rateLimit(key: string, max: number): boolean {
   const now = Date.now();
@@ -25,6 +32,13 @@ function rateLimit(key: string, max: number): boolean {
   b.count += 1;
   return true;
 }
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of buckets) {
+    if (now > bucket.reset) buckets.delete(key);
+  }
+}, BUCKET_CLEANUP_INTERVAL).unref();
 
 function clientKey(req: Request, suffix: string) {
   const ip =
@@ -51,7 +65,7 @@ function sanitizeSymbols(input: unknown): string[] {
   ];
 }
 
-router.get("/news", async (req: Request, res: Response) => {
+router.get("/news", asyncHandler(async (req: Request, res: Response) => {
   if (!rateLimit(clientKey(req, "news"), MAX_NEWS)) {
     return res.status(429).json({ error: "Too many requests. Try again shortly." });
   }
@@ -72,7 +86,7 @@ router.get("/news", async (req: Request, res: Response) => {
       },
     ]);
   }
-});
+}));
 
 async function handleLivePrices(symbols: string[], res: Response) {
   if (symbols.length === 0) return res.json({});
@@ -85,33 +99,38 @@ async function handleLivePrices(symbols: string[], res: Response) {
   }
 }
 
-router.post("/live-prices", async (req: Request, res: Response) => {
+router.post("/live-prices", asyncHandler(async (req: Request, res: Response) => {
   if (!rateLimit(clientKey(req, "prices"), MAX_PRICES)) {
     return res.status(429).json({ error: "Too many requests. Try again shortly." });
   }
   return handleLivePrices(sanitizeSymbols(req.body?.symbols), res);
-});
+}));
 
 // GET variant: /api/live-prices?symbols=DANGCEM,MTNN
-router.get("/live-prices", async (req: Request, res: Response) => {
+router.get("/live-prices", asyncHandler(async (req: Request, res: Response) => {
   if (!rateLimit(clientKey(req, "prices"), MAX_PRICES)) {
     return res.status(429).json({ error: "Too many requests. Try again shortly." });
   }
   return handleLivePrices(sanitizeSymbols(req.query.symbols), res);
-});
+}));
 
-router.get("/market-snapshot", async (req: Request, res: Response) => {
+router.get("/market-snapshot", asyncHandler(async (req: Request, res: Response) => {
   if (!rateLimit(clientKey(req, "snapshot"), MAX_NEWS)) {
     return res.status(429).json({ error: "Too many requests." });
   }
-  const snap = await getMarketSnapshot();
-  if (!snap) {
-    return res.status(503).json({ error: "Market snapshot unavailable", status: marketDataStatus() });
+  try {
+    const snap = await getMarketSnapshot();
+    if (!snap) {
+      return res.status(503).json({ error: "Market snapshot unavailable" });
+    }
+    return res.json(snap);
+  } catch (e: any) {
+    console.error("Market snapshot error:", e?.message || e);
+    return res.status(503).json({ error: "Market snapshot unavailable" });
   }
-  return res.json(snap);
-});
+}));
 
-router.get("/market-status", async (req: Request, res: Response) => {
+router.get("/market-status", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
   const shouldProbe =
     req.query.probe === "1" ||
     req.query.probe === "true" ||
@@ -122,14 +141,14 @@ router.get("/market-status", async (req: Request, res: Response) => {
     try {
       probe = await probeMarketConnection();
     } catch (e: any) {
-      probe = { ok: false, error: e?.message || String(e) };
+      probe = { ok: false, error: "Connection test failed" };
     }
   }
 
   return res.json({
-    ...marketDataStatus(),
+    provider: "ngnmarket",
     probe,
   });
-});
+}));
 
 export default router;

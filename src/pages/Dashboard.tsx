@@ -179,11 +179,15 @@ export const Dashboard: React.FC = () => {
 
   const handleShare = async (e: React.MouseEvent, title: string, text: string) => {
     e.stopPropagation();
-    if (navigator.share) {
-      await navigator.share({ title, text, url: window.location.href });
-    } else {
-      await navigator.clipboard.writeText(`${title}\n${text}\n${window.location.href}`);
-      alert("Link copied to clipboard!");
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text, url: window.location.href });
+      } else {
+        await navigator.clipboard.writeText(`${title}\n${text}\n${window.location.href}`);
+        alert("Link copied to clipboard!");
+      }
+    } catch {
+      // User cancelled share dialog or clipboard access denied
     }
   };
 
@@ -257,17 +261,29 @@ export const Dashboard: React.FC = () => {
 
   const handleDeleteInvestment = async (id: string | number) => {
     if (window.confirm('Delete this investment?')) {
-      await apiFetch(`/api/portfolio/${id}`, { method: 'DELETE' });
-      fetchPortfolio();
+      try {
+        const res = await apiFetch(`/api/portfolio/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setPortfolioError(body?.error || `Delete failed (${res.status})`);
+        }
+        fetchPortfolio();
+      } catch {
+        setPortfolioError('Could not reach server');
+      }
     }
   };
 
   const handleDeletePost = async (e: React.MouseEvent, postId: string | number) => {
     e.stopPropagation();
     if (window.confirm('Delete this discussion?')) {
-      await apiFetch(`/api/forum/${postId}`, { method: 'DELETE' });
-      fetchForumPosts();
-      if (selectedPost?.id === postId) setSelectedPost(null);
+      try {
+        await apiFetch(`/api/forum/${postId}`, { method: 'DELETE' });
+        fetchForumPosts();
+        if (selectedPost?.id === postId) setSelectedPost(null);
+      } catch {
+        setCommentError('Could not delete discussion');
+      }
     }
   };
 
@@ -276,49 +292,57 @@ export const Dashboard: React.FC = () => {
     if (!user) return;
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData.entries());
-    
+
     const url = editingPost ? `/api/forum/${editingPost.id}` : '/api/forum';
     const method = editingPost ? 'PUT' : 'POST';
 
-    const res = await apiFetch(url, {
-      method,
-      body: JSON.stringify(data)
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      alert(body?.error || 'Failed to create post');
-      return;
-    }
+    try {
+      const res = await apiFetch(url, {
+        method,
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setCommentError(body?.error || 'Failed to save discussion');
+        return;
+      }
 
-    setShowCreatePostModal(false);
-    setEditingPost(null);
-    fetchForumPosts();
+      setShowCreatePostModal(false);
+      setEditingPost(null);
+      fetchForumPosts();
+    } catch {
+      setCommentError('Could not reach server');
+    }
   };
 
   const handleAddInvestment = async (data: any) => {
     if (!user) return;
     const url = editingInvestment ? `/api/portfolio/${editingInvestment.id}` : '/api/portfolio';
     const method = editingInvestment ? 'PUT' : 'POST';
-    
-    const res = await apiFetch(url, {
-      method,
-      body: JSON.stringify({
-        ...data,
-        symbol: String(data.symbol || '').toUpperCase(),
-        entry_price: Number(data.entry_price),
-        quantity: Number(data.quantity),
-      })
-    });
 
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      alert(body?.error || 'Failed to save investment');
-      return;
+    try {
+      const res = await apiFetch(url, {
+        method,
+        body: JSON.stringify({
+          ...data,
+          symbol: String(data.symbol || '').toUpperCase(),
+          entry_price: Number(data.entry_price),
+          quantity: Number(data.quantity),
+        })
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setPortfolioError(body?.error || 'Failed to save investment');
+        return;
+      }
+
+      setShowAddInvestmentModal(false);
+      setEditingInvestment(null);
+      fetchPortfolio();
+    } catch {
+      setPortfolioError('Could not reach server');
     }
-
-    setShowAddInvestmentModal(false);
-    setEditingInvestment(null);
-    fetchPortfolio();
   };
 
   const totalValue = investments.reduce((acc, inv) => {

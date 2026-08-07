@@ -30,7 +30,7 @@ function safeDetail(detail: any): any {
 
 function log(level: "info" | "warn" | "error", message: string, detail?: any) {
   recentLogs.unshift({ at: new Date().toISOString(), level, message, detail: safeDetail(detail) });
-  if (recentLogs.length > 30) recentLogs.pop();
+  while (recentLogs.length > 30) recentLogs.pop();
   const line = `[NGN Market] ${message}`;
   if (level === "error") console.error(line, detail ?? "");
   else if (level === "warn") console.warn(line, detail ?? "");
@@ -294,23 +294,8 @@ export function marketDataStatus() {
   return {
     provider: key ? "ngnmarket" : "none",
     key_configured: !!key,
-    key_prefix: key ? key.slice(0, 12) + "…" : null,
-    key_looks_valid: key ? key.startsWith("ngm_") : false,
-    docs: {
-      base: NGNMARKET_BASE,
-      auth: "Authorization: Bearer ngm_live_…",
-      free_endpoint: "GET /companies?limit=200",
-      price_field: "price",
-      note: "GET /companies/:symbol is Hobby-only — we never call it",
-    },
     cached_symbols: Object.keys(priceCache).length,
-    sample_cache: Object.fromEntries(
-      Object.entries(priceCache)
-        .slice(0, 5)
-        .map(([k, v]) => [k, v.price])
-    ),
     bulk_cached: !!bulkListCache,
     snapshot_cached: !!snapshotCache,
-    recent_logs: recentLogs.slice(0, 15),
   };
 }

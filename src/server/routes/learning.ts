@@ -1,13 +1,19 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { dbFirestore } from "../db.js";
 
 const router = Router();
 
-router.get("/", async (req, res) => {
+function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    fn(req, res, next).catch(next);
+  };
+}
+
+router.get("/", asyncHandler(async (req, res) => {
   if (dbFirestore) {
     try {
       const snapshot = await dbFirestore.collection("learning_content").get();
-      if (snapshot.size < 8) {
+      if (snapshot.empty) {
         // Seed demo content if empty or insufficient
         const demoContent = [
           {
@@ -103,6 +109,6 @@ router.get("/", async (req, res) => {
       url: "#"
     }
   ]);
-});
+}));
 
 export default router;
