@@ -141,8 +141,11 @@
   to   { transform: translateX(-50%); }
 }
 
+/* Duration is overridden inline by TickerTape from the measured track width, so
+   reading speed stays constant regardless of how many companies are listed.
+   This value only applies for the first frame before measurement lands. */
 .ticker-track {
-  animation: ticker-scroll 90s linear infinite;
+  animation: ticker-scroll 300s linear infinite;
   will-change: transform;
 }
 

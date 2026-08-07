@@ -139,4 +139,52 @@ export async function getMarketNews() {
   return data;
 }
 
+/**
+ * Which generation backend is live, and why. Booleans only — no key material.
+ */
+export function aiStatus() {
+  return {
+    backend: genaiClient
+      ? ("gemini-server" as const)
+      : generativeModel
+        ? ("firebase-vertex" as const)
+        : ("none" as const),
+    gemini_key_configured: !!geminiKey,
+    firebase_client_configured: !!(
+      process.env.VITE_FIREBASE_API_KEY && process.env.VITE_FIREBASE_PROJECT_ID
+    ),
+    model: MODEL,
+    news_cached: !!cache["market_news"],
+    reason: genaiClient
+      ? "GEMINI_API_KEY set — using the server-side SDK"
+      : generativeModel
+        ? "No GEMINI_API_KEY. Falling back to the Firebase client SDK, which authenticates as a browser client and usually fails on serverless."
+        : "No AI backend configured. Set GEMINI_API_KEY to enable the news feed.",
+  };
+}
+
+/**
+ * Live round-trip against the configured backend. Costs a few tokens, so it is
+ * only run when explicitly requested by the diagnostics endpoint.
+ */
+export async function probeAi(): Promise<{ ok: boolean; detail: string }> {
+  try {
+    let response: any;
+    if (genaiClient) {
+      response = await genaiClient.models.generateContent({
+        model: MODEL,
+        contents: 'Reply with exactly: OK',
+      });
+    } else if (generativeModel) {
+      response = await generativeModel.generateContent('Reply with exactly: OK');
+    } else {
+      return { ok: false, detail: 'No AI backend configured' };
+    }
+    const text = responseText(response).trim().slice(0, 80);
+    return { ok: text.length > 0, detail: text || 'Empty response from model' };
+  } catch (e: any) {
+    return { ok: false, detail: String(e?.message || e).slice(0, 300) };
+  }
+}
+
 export { generativeModel };

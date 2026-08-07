@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { TrendingUp, TrendingDown, Minus, Activity } from 'lucide-react';
 import { CompanyQuote } from '../types';
 
@@ -6,6 +6,14 @@ interface TickerTapeProps {
   quotes: CompanyQuote[];
   loading: boolean;
 }
+
+/**
+ * Scroll speed in pixels per second. A fixed animation duration would mean the
+ * tape runs faster the more companies are listed; deriving the duration from the
+ * measured track width keeps the reading speed constant instead.
+ */
+const PX_PER_SECOND = 40;
+const MIN_DURATION_S = 30;
 
 function TickerItem({ q }: { q: CompanyQuote }) {
   const pct = q.change_percent;
@@ -45,6 +53,24 @@ function TickerItem({ q }: { q: CompanyQuote }) {
  * where the first began and the loop has no visible seam.
  */
 export const TickerTape: React.FC<TickerTapeProps> = ({ quotes, loading }) => {
+  const copyRef = useRef<HTMLDivElement>(null);
+  const [duration, setDuration] = useState<number | null>(null);
+
+  // Measure one copy of the list and derive the loop duration from its width, so
+  // the tape reads at PX_PER_SECOND no matter how many companies are listed.
+  useLayoutEffect(() => {
+    if (quotes.length === 0) return;
+    const measure = () => {
+      const width = copyRef.current?.scrollWidth ?? 0;
+      if (width > 0) {
+        setDuration(Math.max(MIN_DURATION_S, width / PX_PER_SECOND));
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [quotes]);
+
   if (loading) {
     return (
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
@@ -69,9 +95,17 @@ export const TickerTape: React.FC<TickerTapeProps> = ({ quotes, loading }) => {
 
         {/* Scrolling track */}
         <div className="relative flex-1 overflow-hidden py-2.5">
-          <div className="ticker-track flex w-max group-hover:[animation-play-state:paused]">
+          <div
+            className="ticker-track flex w-max group-hover:[animation-play-state:paused]"
+            style={duration ? { animationDuration: `${duration}s` } : undefined}
+          >
             {[0, 1].map(copy => (
-              <div key={copy} className="flex items-center" aria-hidden={copy === 1}>
+              <div
+                key={copy}
+                ref={copy === 0 ? copyRef : undefined}
+                className="flex items-center"
+                aria-hidden={copy === 1}
+              >
                 {quotes.map(q => (
                   <TickerItem key={`${copy}-${q.symbol}`} q={q} />
                 ))}

@@ -6,6 +6,7 @@ import portfolioRoutes from "./routes/portfolio.js";
 import forumRoutes from "./routes/forum.js";
 import newsRoutes from "./routes/news.js";
 import learningRoutes from "./routes/learning.js";
+import { healthPayload } from "./health.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,7 +24,7 @@ export async function createApp() {
   app.use("/api/learning", learningRoutes);
 
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok" });
+    res.json(healthPayload());
   });
 
   // Global error handler
