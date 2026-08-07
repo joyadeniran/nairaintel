@@ -36,9 +36,10 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
   const [showResults, setShowResults] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Ref is the source of truth for the selected equity — avoids stale state on submit
+  const pickedRef = useRef<CompanyQuote | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
 
-  // Reset to the editing target (or a blank form) each time the modal opens.
   useEffect(() => {
     if (!isOpen) return;
     const inv = editingInvestment;
@@ -48,17 +49,29 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
     setEntryPrice(inv?.entry_price != null ? String(inv.entry_price) : '');
     setQuantity(inv?.quantity != null ? String(inv.quantity) : '');
     setQuery(inv ? `${inv.symbol} — ${inv.name}` : '');
-    setPicked(null);
+    // Editing an existing stock counts as already "picked"
+    if (inv?.type === 'stock' && inv.symbol) {
+      const existing: CompanyQuote = {
+        symbol: inv.symbol,
+        name: inv.name,
+        price: Number(inv.entry_price) || 0,
+      };
+      setPicked(existing);
+      pickedRef.current = existing;
+    } else {
+      setPicked(null);
+      pickedRef.current = null;
+    }
     setResults([]);
     setShowResults(false);
     setError(null);
   }, [isOpen, editingInvestment]);
 
-  // Debounced ticker lookup. Skipped for T-Bills, which are not NGX-listed.
   useEffect(() => {
     if (type !== 'stock') return;
     const q = query.trim();
-    if (!q || picked) {
+    // Don't search while a firm selection is locked in
+    if (!q || pickedRef.current) {
       setResults([]);
       return;
     }
@@ -76,12 +89,13 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
       clearTimeout(t);
       setSearching(false);
     };
-  }, [query, type, picked]);
+  }, [query, type]);
 
-  // Dismiss the dropdown on outside click.
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setShowResults(false);
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
+        setShowResults(false);
+      }
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -89,20 +103,24 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
 
   if (!isOpen) return null;
 
-  const choose = (q: CompanyQuote) => {
-    setPicked(q);
-    setSymbol(q.symbol);
-    setName(q.name);
-    setQuery(`${q.symbol} — ${q.name}`);
-    // Prefill with today's market price; the user overrides it if they bought earlier.
-    if (!entryPrice) setEntryPrice(String(q.price));
+  const choose = (company: CompanyQuote) => {
+    // Lock selection immediately (ref + state)
+    pickedRef.current = company;
+    setPicked(company);
+    setSymbol(company.symbol);
+    setName(company.name);
+    setQuery(`${company.symbol} — ${company.name}`);
+    setEntryPrice((prev) => (prev ? prev : String(company.price)));
     setShowResults(false);
     setResults([]);
+    setError(null);
   };
 
-  const clearPick = (value: string) => {
+  const onQueryChange = (value: string) => {
     setQuery(value);
-    if (picked) {
+    // Any edit after a pick invalidates the selection — user must pick again
+    if (pickedRef.current) {
+      pickedRef.current = null;
       setPicked(null);
       setSymbol('');
       setName('');
@@ -116,11 +134,35 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
     const price = Number(entryPrice);
     const qty = Number(quantity);
 
-    if (type === 'stock' && !symbol.trim()) {
-      setError('Pick a ticker from the list.');
+    if (type === 'stock') {
+      const selection = pickedRef.current;
+      if (!selection?.symbol) {
+        setError('Select a company from the search results — typing alone is not enough.');
+        setShowResults(results.length > 0);
+        return;
+      }
+
+      if (!Number.isFinite(price) || price <= 0) {
+        setError('Entry price must be greater than zero.');
+        return;
+      }
+      if (!Number.isInteger(qty) || qty <= 0) {
+        setError('Quantity must be a whole number greater than zero.');
+        return;
+      }
+
+      onConfirm({
+        type: 'stock',
+        symbol: selection.symbol.trim().toUpperCase(),
+        name: (selection.name || selection.symbol).trim(),
+        entry_price: price,
+        quantity: qty,
+      });
       return;
     }
-    if (type === 'tbill' && (!symbol.trim() || !name.trim())) {
+
+    // T-Bill path
+    if (!symbol.trim() || !name.trim()) {
       setError('Enter a name and reference for the instrument.');
       return;
     }
@@ -134,11 +176,11 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
     }
 
     onConfirm({
-      type,
+      type: 'tbill',
       symbol: symbol.trim().toUpperCase(),
-      name: name.trim() || symbol.trim().toUpperCase(),
+      name: name.trim(),
       entry_price: price,
-      quantity: qty
+      quantity: qty,
     });
   };
 
@@ -176,7 +218,6 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
           </div>
 
           <form className="space-y-6" onSubmit={submit}>
-            {/* Asset class */}
             <div className="grid grid-cols-2 gap-3">
               {([
                 { v: 'stock', label: 'Equity', hint: 'NGX listed' },
@@ -185,7 +226,16 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
                 <button
                   key={opt.v}
                   type="button"
-                  onClick={() => setType(opt.v)}
+                  onClick={() => {
+                    setType(opt.v);
+                    pickedRef.current = null;
+                    setPicked(null);
+                    setSymbol('');
+                    setName('');
+                    setQuery('');
+                    setResults([]);
+                    setShowResults(false);
+                  }}
                   className={`p-4 rounded-2xl border text-left transition-all ${
                     type === opt.v
                       ? 'border-brand-green bg-brand-green/5 dark:bg-brand-green/10'
@@ -219,20 +269,26 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
                   )}
                   <input
                     value={query}
-                    onChange={e => clearPick(e.target.value)}
-                    onFocus={() => results.length > 0 && setShowResults(true)}
+                    onChange={e => onQueryChange(e.target.value)}
+                    onFocus={() => {
+                      if (!pickedRef.current && results.length > 0) setShowResults(true);
+                    }}
                     placeholder="Search DANGCEM, MTN, GTCO…"
                     autoComplete="off"
                     className={`${inputClass} pl-12`}
                   />
 
-                  {showResults && results.length > 0 && (
+                  {showResults && results.length > 0 && !picked && (
                     <div className="absolute z-30 left-0 right-0 mt-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden max-h-64 overflow-y-auto">
                       {results.map(r => (
                         <button
                           key={r.symbol}
                           type="button"
-                          onClick={() => choose(r)}
+                          // mousedown + preventDefault: commit selection before input blur/outside-click races
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            choose(r);
+                          }}
                           className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left border-b border-slate-50 dark:border-slate-800 last:border-0"
                         >
                           <div className="min-w-0">
@@ -264,11 +320,11 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
 
                 {picked ? (
                   <p className="text-[11px] font-bold text-brand-green ml-1 flex items-center gap-1">
-                    <Check size={12} /> {picked.name} · name auto-filled
+                    <Check size={12} /> {picked.symbol} · {picked.name}
                   </p>
                 ) : (
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 ml-1">
-                    Name and market price fill in automatically.
+                    Type to search, then click a result to select it.
                   </p>
                 )}
               </div>
