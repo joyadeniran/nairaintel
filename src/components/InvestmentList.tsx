@@ -31,15 +31,15 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
   setEditingInvestment,
   handleDeleteInvestment
 }) => {
-  const stocks = investments.filter(i => i.type === 'stock').filter(i =>
-    i.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    i.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Firestore docs written before field validation may be missing symbol/name,
+  // so coerce rather than dereference — an unhandled throw here blanks the page.
+  const q = searchQuery.toLowerCase();
+  const matches = (i: Investment) =>
+    String(i.symbol || '').toLowerCase().includes(q) ||
+    String(i.name || '').toLowerCase().includes(q);
 
-  const tbills = investments.filter(i => i.type === 'tbill').filter(i =>
-    i.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    i.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const stocks = investments.filter(i => i.type === 'stock').filter(matches);
+  const tbills = investments.filter(i => i.type === 'tbill').filter(matches);
 
   const hasAny = stocks.length > 0 || tbills.length > 0;
   const liveCount = stocks.filter(s => resolveMarketPrice(s, livePrices).hasLive).length;
@@ -141,7 +141,7 @@ export const InvestmentList: React.FC<InvestmentListProps> = ({
                                   ? 'bg-brand-green/10 dark:bg-brand-green/15 text-brand-green'
                                   : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
                               }`}>
-                                {inv.symbol.substring(0, 2).toUpperCase()}
+                                {String(inv.symbol || '—').substring(0, 2).toUpperCase()}
                               </div>
                               <div>
                                 <p className="text-sm font-bold text-slate-800 dark:text-white">{inv.name}</p>

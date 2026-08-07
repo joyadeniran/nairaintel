@@ -1,5 +1,61 @@
 # Changelog: nairaintel
 
+## [2026-08-07] - Audit Sweep 2: Client, Config & Build
+
+### Fixed — Dark mode toggle was non-functional (P1)
+- Tailwind v4 defaults the `dark:` variant to `prefers-color-scheme`; no
+  `@custom-variant dark` was ever declared, so the toggle's `.dark` class drove
+  none of the `dark:` utilities. Verified against the compiled CSS: all 43
+  `dark:` rules sat inside `@media (prefers-color-scheme: dark)`, zero under a
+  `.dark` selector. Clicking the toggle only flipped five CSS variables on
+  `body`, leaving every card, border, and label in the OS theme.
+- Added `@custom-variant dark (&:where(.dark, .dark *))` — 55 utilities now
+  class-driven, zero media-gated.
+- Theme choice now persists to `localStorage` and is applied before first paint
+  by a boot script in `index.html` (stored choice wins, else OS preference), so
+  there is no theme flash and no reset on reload.
+- Removed the now-redundant `@media (prefers-color-scheme: dark)` variable block
+  so the class is the single source of truth.
+
+### Fixed — Type checking was largely vacuous (P1)
+- `@types/react` / `@types/react-dom` were never installed, so `React.FC`,
+  `React.ReactNode`, and every React event type across 20+ components silently
+  resolved to `any` (tsconfig sets no `strict`, so implicit-any passed).
+- Installed both as devDependencies. `npm run lint` now type-checks the React
+  app for real.
+- `npm run lint` was red on master (`Navigation.tsx` used the `React` namespace
+  without importing it, introduced in 585ac2c). Now green, exit 0.
+- Adding real types surfaced one latent contract bug: `MarketNews` omitted
+  `source_url`, which the server emits (`ai.ts:52`, `news.ts:85`) and the UI
+  consumes (`NewsPage.tsx:88`). Added to the interface.
+
+### Fixed — Crash and blank-page risk (P2)
+- `InvestmentList` dereferenced `i.symbol` / `i.name` directly when filtering and
+  when rendering the ticker badge; a Firestore doc missing either field threw
+  `TypeError: Cannot read properties of undefined` and, with no error boundary,
+  blanked the whole page. Reproduced, then fixed by coercion — matching the
+  defensive `String(inv.symbol || '')` already used elsewhere in the same file.
+- Added `ErrorBoundary` around the app so a render throw degrades to a
+  recoverable screen with Try again / Reload instead of a white page.
+
+### Fixed — Latent secret exposure (P2)
+- `vite.config.ts` injected `GEMINI_API_KEY` into the client bundle via `define`,
+  and `DEPLOY.md` instructs setting that variable in production. Verified with a
+  canary build: the key does **not** leak today because no client code
+  references it, but a single `process.env.GEMINI_API_KEY` reference in client
+  code bakes it into the public JS bundle (canary confirmed present). Removed the
+  `define` and documented why secrets must never go there.
+
+### Known issues — reported, not changed
+- `api/index.ts` is unreachable: `vercel.json` rewrites all `/api/*` to
+  `api/[...path]`. It still deploys as a second function.
+- `api/[...path].ts` contains a no-op middleware that only calls `next()`.
+- `marketDataStatus()` and `safeParseLikes()` now have zero callers.
+- `AddInvestmentModal` inputs lack `required` (unlike `CreatePostModal`), so an
+  empty submit round-trips to the server for a generic banner error.
+- `better-sqlite3` sits in `dependencies` though `db.ts` skips it on serverless;
+  it is compiled on every Vercel build.
+
 ## [2026-08-07] - Full-Stack Code Audit & Hardening
 
 ### Security

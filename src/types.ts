@@ -38,6 +38,8 @@ export interface MarketNews {
   summary: string;
   sentiment: 'Positive' | 'Neutral' | 'Negative';
   impact: string;
+  /** Emitted by the news API (src/server/services/ai.ts); defaults to "#". */
+  source_url?: string;
 }
 
 export interface LearningContent {

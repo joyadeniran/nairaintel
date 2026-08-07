@@ -1,3 +1,4 @@
+import React from 'react';
 import { Bell, Sun, Moon, Briefcase, Newspaper, Users, BookOpen } from 'lucide-react';
 
 interface NavigationProps {
@@ -23,7 +24,12 @@ export const Navigation: React.FC<NavigationProps> = ({
   setShowProfileModal
 }) => {
   const toggleDarkMode = () => {
-    document.documentElement.classList.toggle('dark');
+    const isDark = document.documentElement.classList.toggle('dark');
+    try {
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    } catch {
+      /* localStorage unavailable (private mode) — theme resets next load */
+    }
   };
 
   return (
