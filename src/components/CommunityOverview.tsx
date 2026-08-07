@@ -8,10 +8,10 @@ interface CommunityOverviewProps {
   setSelectedPost: (post: ForumPost) => void;
 }
 
-export const CommunityOverview: React.FC<CommunityOverviewProps> = ({ 
-  trendingPosts, 
-  setActiveTab, 
-  setSelectedPost 
+export const CommunityOverview: React.FC<CommunityOverviewProps> = ({
+  trendingPosts,
+  setActiveTab,
+  setSelectedPost
 }) => {
   return (
     <div className="space-y-6">
@@ -21,13 +21,13 @@ export const CommunityOverview: React.FC<CommunityOverviewProps> = ({
             <TrendingUp size={20} />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Community Intelligence</h3>
+            <h3 className="text-lg font-display font-bold text-slate-800 dark:text-white">Community Intelligence</h3>
             <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Trending Discussions</p>
           </div>
         </div>
         <button
           onClick={() => setActiveTab('forum')}
-          className="text-sm font-bold text-brand-green hover:underline flex items-center gap-1"
+          className="text-sm font-bold text-brand-green hover:text-brand-green-light flex items-center gap-1 transition-colors"
         >
           View All <ArrowRight size={14} />
         </button>
@@ -36,41 +36,38 @@ export const CommunityOverview: React.FC<CommunityOverviewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {trendingPosts.length > 0 ? (
           trendingPosts.slice(0, 2).map((post) => (
-            <div 
+            <div
               key={post.id}
-              onClick={() => {
-                setSelectedPost(post);
-                setActiveTab('forum');
-              }}
-              className="group cursor-pointer p-6 rounded-[2rem] bg-slate-50 dark:bg-slate-800/50 border border-slate-100/50 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800 hover:border-brand-green/30 hover:shadow-xl hover:shadow-slate-200/30 dark:hover:shadow-none transition-all"
+              onClick={() => { setSelectedPost(post); setActiveTab('forum'); }}
+              className="group cursor-pointer p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800 hover:border-brand-green/20 hover:shadow-lg hover:shadow-slate-200/30 dark:hover:shadow-none transition-all"
             >
               <span className="text-[10px] font-bold text-brand-green bg-brand-green/5 dark:bg-brand-green/10 px-2.5 py-1 rounded-md uppercase tracking-wider mb-3 inline-block">
                 {post.category}
               </span>
-              <h4 className="text-sm font-extrabold text-slate-800 dark:text-white group-hover:text-brand-green transition-colors mb-3 line-clamp-2 leading-snug">
+              <h4 className="text-sm font-display font-bold text-slate-800 dark:text-white group-hover:text-brand-green transition-colors mb-3 line-clamp-2 leading-snug">
                 {post.title}
               </h4>
-              <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100/50 dark:border-slate-700/50">
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                     <img src={`https://picsum.photos/seed/${post.username}/24/24`} alt="" />
                   </div>
                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">{post.username}</span>
                 </div>
-                <div className="flex items-center gap-3 text-slate-400">
+                <div className="flex items-center gap-3 text-slate-400 dark:text-slate-500">
                   <span className="flex items-center gap-1 text-[10px] font-bold">
-                    <ThumbsUp size={12} /> {post.likes?.length || 0}
+                    <ThumbsUp size={11} /> {post.likes?.length || 0}
                   </span>
                   <span className="flex items-center gap-1 text-[10px] font-bold">
-                    <MessageSquare size={12} /> {post.comment_count || 0}
+                    <MessageSquare size={11} /> {post.comment_count || 0}
                   </span>
                 </div>
               </div>
             </div>
           ))
         ) : (
-          <div className="col-span-2 py-8 text-center bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] border border-dashed border-slate-200 dark:border-slate-700">
-            <p className="text-sm text-slate-400 dark:text-slate-500 font-medium italic">No trending discussions yet. Start one!</p>
+          <div className="col-span-2 py-8 text-center bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
+            <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">No trending discussions yet. Start one!</p>
           </div>
         )}
       </div>
