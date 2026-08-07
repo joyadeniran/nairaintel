@@ -42,6 +42,15 @@ export interface MarketNews {
   source_url?: string;
 }
 
+/** A live NGX quote as returned by /api/tickers and /api/companies/search. */
+export interface CompanyQuote {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number | null;
+  change_percent: number | null;
+}
+
 export interface LearningContent {
   id: string;
   title: string;

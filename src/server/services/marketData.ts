@@ -13,8 +13,10 @@ const NGNMARKET_BASE = "https://api.ngnmarket.com/v1";
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
 const priceCache: Record<string, { price: number; ts: number; source: string }> = {};
+const quoteCache: Record<string, { quote: CompanyQuote; ts: number }> = {};
 let snapshotCache: { data: any; ts: number } | null = null;
 let bulkListCache: { map: Record<string, number>; ts: number } | null = null;
+let bulkQuoteCache: { quotes: CompanyQuote[]; ts: number } | null = null;
 
 const recentLogs: Array<{ at: string; level: string; message: string; detail?: any }> = [];
 
@@ -92,6 +94,7 @@ async function ngnFetch(path: string): Promise<{ ok: boolean; status: number; bo
   }
 }
 
+/** Positive-only coercion — used for prices, which are never <= 0. */
 function num(v: unknown): number | null {
   if (typeof v === "number" && !Number.isNaN(v) && v > 0) return v;
   if (typeof v === "string") {
@@ -99,6 +102,24 @@ function num(v: unknown): number | null {
     if (!Number.isNaN(n) && n > 0) return n;
   }
   return null;
+}
+
+/** Signed coercion — used for deltas, which are legitimately negative or zero. */
+function signedNum(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = parseFloat(v.replace(/,/g, "").replace(/%/g, ""));
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+export interface CompanyQuote {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number | null;
+  change_percent: number | null;
 }
 
 function extractPriceFromCompany(item: any): number | null {
@@ -113,10 +134,35 @@ function extractPriceFromCompany(item: any): number | null {
   );
 }
 
-function companiesToPriceMap(body: any): Record<string, number> {
-  const map: Record<string, number> = {};
-  if (!body) return map;
+function extractQuote(item: any): CompanyQuote | null {
+  const symbol = String(item?.symbol || item?.ticker || "").trim().toUpperCase();
+  const price = extractPriceFromCompany(item);
+  if (!symbol || price == null) return null;
 
+  const name = String(
+    item?.name ||
+      item?.company_name ||
+      item?.companyName ||
+      item?.long_name ||
+      item?.security_name ||
+      symbol
+  )
+    .trim()
+    .slice(0, 120);
+
+  return {
+    symbol,
+    name,
+    price,
+    change: signedNum(item?.change ?? item?.price_change ?? item?.change_amount),
+    change_percent: signedNum(
+      item?.change_percent ?? item?.percent_change ?? item?.changePercent ?? item?.pct_change
+    ),
+  };
+}
+
+/** Pull the companies array out of the API envelope, tolerating shape drift. */
+function companiesRows(body: any): any[] | null {
   const rows: any =
     body?.data?.data ??
     (Array.isArray(body?.data) ? body.data : null) ??
@@ -130,41 +176,117 @@ function companiesToPriceMap(body: any): Record<string, number> {
           ? Object.keys(body.data)
           : undefined,
     });
-    return map;
+    return null;
   }
+  return rows;
+}
 
+function companiesToQuotes(body: any): CompanyQuote[] {
+  if (!body) return [];
+  const rows = companiesRows(body);
+  if (!rows) return [];
+
+  const quotes: CompanyQuote[] = [];
   for (const item of rows) {
-    const sym = String(item?.symbol || item?.ticker || "")
-      .trim()
-      .toUpperCase();
-    const price = extractPriceFromCompany(item);
-    if (sym && price != null) {
-      map[sym] = price;
-      priceCache[sym] = { price, ts: Date.now(), source: "ngnmarket" };
+    const q = extractQuote(item);
+    if (q) {
+      quotes.push(q);
+      priceCache[q.symbol] = { price: q.price, ts: Date.now(), source: "ngnmarket" };
+      quoteCache[q.symbol] = { quote: q, ts: Date.now() };
     }
   }
 
-  log("info", `Parsed ${Object.keys(map).length} prices from ${rows.length} rows`);
+  log("info", `Parsed ${quotes.length} quotes from ${rows.length} rows`);
+  return quotes;
+}
+
+function companiesToPriceMap(body: any): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const q of companiesToQuotes(body)) map[q.symbol] = q.price;
   return map;
+}
+
+async function fetchBulkQuotes(): Promise<CompanyQuote[]> {
+  if (bulkQuoteCache && Date.now() - bulkQuoteCache.ts < CACHE_TTL_MS) {
+    return bulkQuoteCache.quotes;
+  }
+
+  const { ok, body } = await ngnFetch(
+    "/companies?limit=200&page=1&sort=market_cap&order=desc"
+  );
+  if (!ok) return bulkQuoteCache?.quotes || [];
+
+  const quotes = companiesToQuotes(body);
+  if (quotes.length > 0) {
+    bulkQuoteCache = { quotes, ts: Date.now() };
+    const map: Record<string, number> = {};
+    for (const q of quotes) map[q.symbol] = q.price;
+    bulkListCache = { map, ts: Date.now() };
+  } else {
+    log("warn", "Bulk companies returned 0 parseable quotes");
+  }
+  return quotes;
 }
 
 async function fetchBulkPriceMap(): Promise<Record<string, number>> {
   if (bulkListCache && Date.now() - bulkListCache.ts < CACHE_TTL_MS) {
     return bulkListCache.map;
   }
+  await fetchBulkQuotes();
+  return bulkListCache?.map || {};
+}
 
-  const { ok, body } = await ngnFetch(
-    "/companies?limit=200&page=1&sort=market_cap&order=desc"
-  );
-  if (!ok) return bulkListCache?.map || {};
-
-  const map = companiesToPriceMap(body);
-  if (Object.keys(map).length > 0) {
-    bulkListCache = { map, ts: Date.now() };
-  } else {
-    log("warn", "Bulk companies returned 0 parseable prices");
+/**
+ * Every listed company we can see, most valuable first — backs the ticker tape.
+ * Served from the same 10-minute bulk cache as live prices, so rendering the
+ * tape costs no extra upstream calls.
+ */
+export async function getAllQuotes(): Promise<CompanyQuote[]> {
+  if (!getApiKey()) {
+    log("error", "Cannot list tickers — NGNMARKET_API_KEY missing");
+    return [];
   }
-  return map;
+  return fetchBulkQuotes();
+}
+
+/**
+ * Ticker/name search for the add-asset picker. Filters the cached bulk list
+ * first and only hits the API when the cache cannot satisfy the query.
+ */
+export async function searchCompanies(query: string, limit = 8): Promise<CompanyQuote[]> {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return [];
+  if (!getApiKey()) {
+    log("error", "Cannot search companies — NGNMARKET_API_KEY missing");
+    return [];
+  }
+
+  // Exact ticker first, then ticker prefix, then name/substring hits.
+  const relevance = (c: CompanyQuote) => {
+    const sym = c.symbol.toLowerCase();
+    if (sym === q) return 0;
+    if (sym.startsWith(q)) return 1;
+    if (sym.includes(q)) return 2;
+    if (c.name.toLowerCase().startsWith(q)) return 3;
+    return 4;
+  };
+  const sorted = (list: CompanyQuote[]) =>
+    [...list].sort((a, b) => relevance(a) - relevance(b) || a.symbol.localeCompare(b.symbol));
+
+  // The cached bulk list is every company, so it must be filtered here.
+  const matches = (c: CompanyQuote) =>
+    c.symbol.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);
+
+  const cached = sorted((await fetchBulkQuotes()).filter(matches)).slice(0, limit);
+  if (cached.length > 0) return cached;
+
+  // Upstream has already filtered by the search term, so rank but do not
+  // re-filter — it may legitimately match on fields we do not parse.
+  const { ok, body } = await ngnFetch(
+    `/companies?search=${encodeURIComponent(query)}&limit=${limit}`
+  );
+  if (!ok) return [];
+  return sorted(companiesToQuotes(body)).slice(0, limit);
 }
 
 async function fetchPriceBySearch(symbol: string): Promise<number | null> {
@@ -289,13 +411,3 @@ export async function probeMarketConnection(): Promise<{
   };
 }
 
-export function marketDataStatus() {
-  const key = getApiKey();
-  return {
-    provider: key ? "ngnmarket" : "none",
-    key_configured: !!key,
-    cached_symbols: Object.keys(priceCache).length,
-    bulk_cached: !!bulkListCache,
-    snapshot_cached: !!snapshotCache,
-  };
-}

@@ -3,8 +3,9 @@ import { AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import { Navigation } from '../components/Navigation';
 import { MarketIntelligence } from '../components/MarketIntelligence';
-import { MarketNews, Investment, ForumPost, ForumComment, LearningContent } from '../types';
-import { fetchLatestMarketNews, fetchLivePrices } from '../services/geminiService';
+import { MarketNews, Investment, ForumPost, ForumComment, LearningContent, CompanyQuote } from '../types';
+import { fetchLatestMarketNews, fetchLivePrices, fetchTickers } from '../services/geminiService';
+import { TickerTape } from '../components/TickerTape';
 import { apiFetch } from '../lib/api';
 import { PortfolioPage } from './PortfolioPage';
 import { ForumPage } from './ForumPage';
@@ -53,6 +54,8 @@ export const Dashboard: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [commentError, setCommentError] = useState<string | null>(null);
   const [portfolioError, setPortfolioError] = useState<string | null>(null);
+  const [tickers, setTickers] = useState<CompanyQuote[]>([]);
+  const [loadingTickers, setLoadingTickers] = useState(true);
 
   const refreshLivePrices = useCallback(async (list: Investment[]) => {
     const symbols = list
@@ -140,6 +143,27 @@ export const Dashboard: React.FC = () => {
       fetchForumPosts(1, selectedCategory, searchQuery);
     }
   }, [selectedCategory, searchQuery]);
+
+  // NGX ticker tape. The server caches the bulk list for 10 minutes, so this
+  // refresh mostly hits cache and costs no extra upstream calls.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    const load = async () => {
+      const quotes = await fetchTickers();
+      if (cancelled) return;
+      setTickers(quotes);
+      setLoadingTickers(false);
+    };
+
+    load();
+    const id = setInterval(load, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [user]);
 
   useEffect(() => {
     if (investments.length > 0) {
@@ -372,6 +396,10 @@ export const Dashboard: React.FC = () => {
       />
 
       <main className="max-w-7xl mx-auto px-4 md:px-8 pt-4 md:pt-8 pb-6">
+        <div className="mb-6">
+          <TickerTape quotes={tickers} loading={loadingTickers} />
+        </div>
+
         {(commentError || portfolioError) && (
           <div className="mb-4 rounded-2xl border border-rose-200 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 px-4 py-3 text-sm flex justify-between gap-4">
             <span>{commentError || portfolioError}</span>

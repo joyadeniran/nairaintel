@@ -1,4 +1,31 @@
 import { apiFetch } from "../lib/api";
+import { CompanyQuote } from "../types";
+
+export async function fetchTickers(): Promise<CompanyQuote[]> {
+  try {
+    const res = await apiFetch("/api/tickers");
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error("Tickers fetch error:", error);
+    return [];
+  }
+}
+
+export async function searchCompanies(query: string): Promise<CompanyQuote[]> {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  try {
+    const res = await apiFetch(`/api/companies/search?q=${encodeURIComponent(q)}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error("Company search error:", error);
+    return [];
+  }
+}
 
 export async function fetchLatestMarketNews(): Promise<any[]> {
   try {

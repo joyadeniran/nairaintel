@@ -1,5 +1,61 @@
 # Changelog: nairaintel
 
+## [2026-08-07] - NGX Ticker Tape, Ticker Search & Backlog Cleanup
+
+### Added — NGX ticker tape
+- Continuously scrolling quote strip across the top of the dashboard, showing
+  every NGX company the market API returns with price and % change.
+- New `GET /api/tickers`, backed by `getAllQuotes()`. It reuses the existing
+  10-minute bulk cache, so rendering the tape costs no extra upstream calls.
+- The list is rendered twice and the track translated exactly -50%, so the loop
+  is seamless for any number of quotes. Pauses on hover; honours
+  `prefers-reduced-motion`.
+- Client refreshes every 5 minutes (mostly cache hits) and the strip hides
+  entirely when no quotes are available.
+
+### Added — Ticker search in the add-asset flow
+- New `GET /api/companies/search?q=`, backed by `searchCompanies()`. Filters the
+  cached bulk list first and only calls upstream when the cache cannot answer.
+- Results ranked: exact ticker → ticker prefix → ticker substring → name.
+- `AddInvestmentModal` rebuilt around it. Picking a result auto-fills the
+  **security name** and prefills **entry price** with the live market price
+  (with a "use market price" affordance if you edit it). Quantity stays manual —
+  only the holder knows it. Net effect: 5 fields down to 2.
+- Equity vs T-Bill is now a two-card selector; T-Bills keep manual name/reference
+  fields since they are not NGX-listed.
+- Live total-cost preview, inline validation, and real error messages replacing
+  the previous `alert()` path.
+
+### Fixed — "NGX market data temporarily unavailable" in the sidebar
+- Root cause: `/api/news` fabricated a fake news item whenever AI generation
+  failed, so a synthetic headline rendered inside the Market Intel carousel as
+  though it were real market intelligence. It now returns an empty feed and the
+  existing honest empty state shows instead.
+- Underlying cause of the failure: `ai.ts` initialised the **client** Firebase
+  SDK with `VITE_FIREBASE_*` vars inside the serverless function, which
+  authenticates as a browser client and generally fails there.
+- Added a real server-side path: when `GEMINI_API_KEY` is set, news is generated
+  via `@google/genai`. The Firebase AI path is kept as a documented fallback.
+  Response-text extraction normalises both SDK shapes.
+- `.env.example` and `DEPLOY.md` now state that `GEMINI_API_KEY` is server-only
+  and what breaks without it.
+
+### Fixed — the five items reported in the previous sweep
+- Removed unreachable `api/index.ts` (`vercel.json` rewrites all `/api/*` to
+  `api/[...path]`), and dropped its now-dead entry from `vercel.json` functions.
+- Removed the no-op middleware in `api/[...path].ts`.
+- Removed dead exports `marketDataStatus()` and `safeParseLikes()`.
+- `AddInvestmentModal` no longer submits empty fields — superseded by the
+  validated rewrite above.
+- Moved `better-sqlite3` to `devDependencies`; `db.ts` skips it on serverless, so
+  it no longer compiles as a native module on every Vercel build.
+
+### Also
+- Removed `@google/genai` as an unused dependency, then reintroduced it
+  deliberately as the server-side AI backend described above.
+- `signedNum()` added alongside `num()` in `marketData.ts`: prices must be > 0,
+  but deltas are legitimately negative or zero and were being discarded.
+
 ## [2026-08-07] - Audit Sweep 2: Client, Config & Build
 
 ### Fixed — Dark mode toggle was non-functional (P1)
