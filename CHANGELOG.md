@@ -1,5 +1,19 @@
 # Changelog: nairaintel
 
+## [2026-08-07] - Asset Picker Selection Fix
+
+### Fixed — search text saved instead of selected company
+- Reproduced: typing `M`, clicking **AXA Mansard** still stored symbol `M`.
+- Root cause: selection lived only in React state and could race with input
+  blur / outside-click / form submit, so submit sometimes used the free-text
+  query instead of the chosen ticker.
+- `AddInvestmentModal` now keeps the chosen company in a **ref** (source of
+  truth). Submit for equities **requires** a confirmed pick — typing alone is
+  rejected with a clear error.
+- Result rows use `onMouseDown` + `preventDefault` so selection commits before
+  blur/outside-click handlers run.
+- Editing an existing stock treats the current holding as already selected.
+
 ## [2026-08-07] - Ticker Speed, Diagnostics Endpoints
 
 ### Fixed — ticker tape was unreadably fast
@@ -254,7 +268,7 @@
 ## [2026-08-06] - Vercel deploy + remaining hardening
 
 ### Added
-- `vercel.json` + `api/index.ts` serverless API entry
+- `vercel.json` + serverless API entry
 - `DEPLOY.md` — step-by-step Vercel env + deploy guide
 - SQLite disabled automatically on Vercel (Firestore-only in production)
 
