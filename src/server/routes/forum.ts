@@ -37,16 +37,6 @@ function clampPage(raw: unknown): number {
   return n;
 }
 
-function safeParseLikes(raw: unknown): string[] {
-  try {
-    if (Array.isArray(raw)) return raw as string[];
-    if (typeof raw === "string") return JSON.parse(raw || "[]");
-  } catch {
-    /* ignore */
-  }
-  return [];
-}
-
 // ---------- Public reads ----------
 
 router.get("/", optionalAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {

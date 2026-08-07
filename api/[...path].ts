@@ -7,12 +7,6 @@ import learningRoutes from "../src/server/routes/learning.js";
 
 const app = express();
 
-// Vercel may pass the path in different shapes — normalize
-app.use((req, _res, next) => {
-  // Ensure JSON body is parsed once
-  next();
-});
-
 app.use(express.json({ limit: "64kb" }));
 
 app.use("/api/portfolio", portfolioRoutes);

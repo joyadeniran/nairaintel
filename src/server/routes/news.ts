@@ -4,6 +4,8 @@ import {
   getLivePrices,
   getMarketSnapshot,
   probeMarketConnection,
+  getAllQuotes,
+  searchCompanies,
 } from "../services/marketData.js";
 import { requireAuth, AuthedRequest } from "../middleware/auth.js";
 
@@ -74,17 +76,41 @@ router.get("/news", asyncHandler(async (req: Request, res: Response) => {
     const news = await getMarketNews();
     return res.json(Array.isArray(news) ? news : []);
   } catch (e: any) {
+    // Return an empty feed rather than fabricating a news item. A synthetic
+    // "unavailable" headline reads as real market intelligence in the sidebar
+    // carousel, which is worse than showing the honest empty state.
     console.error("AI Error (News):", e.message || e);
-    return res.json([
-      {
-        headline: "NGX market data temporarily unavailable",
-        summary:
-          "Live AI market brief could not be generated. Check portfolio prices via the market data provider, or retry shortly.",
-        sentiment: "Neutral",
-        impact: "No change to your positions from this notice alone.",
-        source_url: "#",
-      },
-    ]);
+    return res.json([]);
+  }
+}));
+
+const MAX_TICKERS = 20;
+
+/** Full NGX quote list for the ticker tape. */
+router.get("/tickers", asyncHandler(async (req: Request, res: Response) => {
+  if (!rateLimit(clientKey(req, "tickers"), MAX_TICKERS)) {
+    return res.status(429).json({ error: "Too many requests. Try again shortly." });
+  }
+  try {
+    return res.json(await getAllQuotes());
+  } catch (e: any) {
+    console.error("Tickers error:", e?.message || e);
+    return res.json([]);
+  }
+}));
+
+/** Ticker/name lookup for the add-asset picker. */
+router.get("/companies/search", asyncHandler(async (req: Request, res: Response) => {
+  if (!rateLimit(clientKey(req, "search"), MAX_PRICES)) {
+    return res.status(429).json({ error: "Too many requests. Try again shortly." });
+  }
+  const q = String(req.query.q ?? "").trim().slice(0, 40);
+  if (!q) return res.json([]);
+  try {
+    return res.json(await searchCompanies(q));
+  } catch (e: any) {
+    console.error("Company search error:", e?.message || e);
+    return res.json([]);
   }
 }));
 

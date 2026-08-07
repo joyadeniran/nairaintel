@@ -41,7 +41,7 @@ You cannot use a local `.env` for production. Set secrets in Vercel:
 
 | Name | Purpose |
 |------|---------|
-| `GEMINI_API_KEY` | AI market news (if not already injected by your host) |
+| `GEMINI_API_KEY` | Server-side key powering the AI market news feed (`/api/news`). Without it the Market Intel panel shows an empty state instead of headlines. Server-only — it is never referenced from client code and must not be exposed to the browser. |
 
 ### Firebase service account tip
 
