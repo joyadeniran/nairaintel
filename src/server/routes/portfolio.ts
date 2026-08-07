@@ -1,8 +1,14 @@
-import { Router, Response } from "express";
+import { Router, Response, NextFunction, Request } from "express";
 import { db, dbFirestore } from "../db.js";
 import { requireAuth, AuthedRequest } from "../middleware/auth.js";
 
 const router = Router();
+
+function asyncHandler(fn: (req: any, res: Response, next: NextFunction) => Promise<any>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    fn(req, res, next).catch(next);
+  };
+}
 
 // All portfolio routes require a verified Firebase user
 router.use(requireAuth);
@@ -12,7 +18,7 @@ function getUid(req: AuthedRequest): string {
   return req.user!.uid;
 }
 
-router.get("/", async (req: AuthedRequest, res: Response) => {
+router.get("/", asyncHandler(async (req: AuthedRequest, res: Response) => {
   const uid = getUid(req);
 
   if (dbFirestore) {
@@ -35,9 +41,9 @@ router.get("/", async (req: AuthedRequest, res: Response) => {
     console.error("SQLite portfolio GET error:", error);
     return res.json([]);
   }
-});
+}));
 
-router.post("/", async (req: AuthedRequest, res: Response) => {
+router.post("/", asyncHandler(async (req: AuthedRequest, res: Response) => {
   const uid = getUid(req);
   const { type, symbol, name, entry_price, quantity } = req.body || {};
 
@@ -50,7 +56,7 @@ router.post("/", async (req: AuthedRequest, res: Response) => {
   }
   const price = parseFloat(entry_price);
   const qty = parseInt(quantity, 10);
-  if (Number.isNaN(price) || price < 0 || Number.isNaN(qty) || qty <= 0) {
+  if (Number.isNaN(price) || price <= 0 || Number.isNaN(qty) || qty <= 0) {
     return res.status(400).json({ error: "Invalid entry_price or quantity" });
   }
 
@@ -73,9 +79,9 @@ router.post("/", async (req: AuthedRequest, res: Response) => {
   }
 
   return res.status(503).json({ error: "Portfolio write requires Firestore configuration" });
-});
+}));
 
-router.put("/:id", async (req: AuthedRequest, res: Response) => {
+router.put("/:id", asyncHandler(async (req: AuthedRequest, res: Response) => {
   const uid = getUid(req);
   const { id } = req.params;
   const { type, symbol, name, entry_price, quantity } = req.body || {};
@@ -98,7 +104,7 @@ router.put("/:id", async (req: AuthedRequest, res: Response) => {
       if (name !== undefined) updates.name = String(name).trim().slice(0, 120);
       if (entry_price !== undefined) {
         const price = parseFloat(entry_price);
-        if (Number.isNaN(price) || price < 0) return res.status(400).json({ error: "Invalid entry_price" });
+        if (Number.isNaN(price) || price <= 0) return res.status(400).json({ error: "Invalid entry_price" });
         updates.entry_price = price;
       }
       if (quantity !== undefined) {
@@ -116,9 +122,9 @@ router.put("/:id", async (req: AuthedRequest, res: Response) => {
   }
 
   return res.status(503).json({ error: "Portfolio write requires Firestore configuration" });
-});
+}));
 
-router.delete("/:id", async (req: AuthedRequest, res: Response) => {
+router.delete("/:id", asyncHandler(async (req: AuthedRequest, res: Response) => {
   const uid = getUid(req);
   const { id } = req.params;
 
@@ -140,6 +146,6 @@ router.delete("/:id", async (req: AuthedRequest, res: Response) => {
   }
 
   return res.status(503).json({ error: "Portfolio write requires Firestore configuration" });
-});
+}));
 
 export default router;

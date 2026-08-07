@@ -1,5 +1,33 @@
 # Changelog: nairaintel
 
+## [2026-08-07] - Full-Stack Code Audit & Hardening
+
+### Security
+- `/api/market-status` now requires authentication (was publicly accessible, exposing API key prefix, internal logs, cache state)
+- Removed API key prefix, internal logs, and cache details from `marketDataStatus()` response
+- Stripped Firestore error `detail` fields from all forum API error responses (prevents internal leak)
+
+### Race Conditions (Firestore)
+- Forum like toggle: replaced read-modify-write with atomic `FieldValue.arrayUnion`/`arrayRemove` (concurrent likes could lose data)
+- Comment count increment: replaced read-then-write with `FieldValue.increment(1)` (concurrent comments could lose count)
+- Comment count decrement: replaced read-then-write with `FieldValue.increment(-1)`
+
+### Memory Leaks
+- Rate limit bucket Map now cleaned up every 5 minutes via interval (was unbounded growth under sustained traffic)
+
+### Unhandled Exceptions
+- All async Express route handlers wrapped in `asyncHandler()` (Express 4 does not catch async rejections — would crash the process or hang the request)
+- `/api/market-snapshot` wrapped in try/catch (was bare `await` with no error handling)
+- `navigator.share()` call wrapped in try/catch (user cancel throws `AbortError`)
+- Investment delete, post create/delete now wrapped in try/catch with user-visible error state (was fire-and-forget)
+
+### Edge Cases
+- Portfolio: `entry_price` validation changed from `< 0` to `<= 0` (zero-price investments make no sense)
+- Learning content: seeding now only triggers when collection is empty (`snapshot.empty`), not when `< 8` (prevented duplicate content accumulation after deletions)
+
+### Cleanup
+- Removed unused `db` (SQLite) import from forum routes (only Firestore is used)
+
 ## [2026-08-07] - 10x Professional UI Overhaul
 
 ### Design System

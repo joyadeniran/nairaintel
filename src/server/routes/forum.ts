@@ -1,9 +1,15 @@
-import { Router, Response } from "express";
-import { db, dbFirestore } from "../db.js";
+import { Router, Response, NextFunction, Request } from "express";
+import { dbFirestore } from "../db.js";
 import admin from "firebase-admin";
 import { requireAuth, optionalAuth, AuthedRequest } from "../middleware/auth.js";
 
 const router = Router();
+
+function asyncHandler(fn: (req: any, res: Response, next: NextFunction) => Promise<any>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    fn(req, res, next).catch(next);
+  };
+}
 
 const ALLOWED_CATEGORIES = new Set([
   "Stock Analysis",
@@ -43,7 +49,7 @@ function safeParseLikes(raw: unknown): string[] {
 
 // ---------- Public reads ----------
 
-router.get("/", optionalAuth, async (req: AuthedRequest, res: Response) => {
+router.get("/", optionalAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
   const page = clampPage(req.query.page);
   const limit = clampLimit(req.query.limit);
   const category = String(req.query.category || "All");
@@ -100,9 +106,9 @@ router.get("/", optionalAuth, async (req: AuthedRequest, res: Response) => {
   }
 
   return res.json({ posts: [], total: 0, page, limit, totalPages: 1 });
-});
+}));
 
-router.get("/trending", optionalAuth, async (_req: AuthedRequest, res: Response) => {
+router.get("/trending", optionalAuth, asyncHandler(async (_req: AuthedRequest, res: Response) => {
   if (dbFirestore) {
     try {
       let snapshot;
@@ -127,9 +133,9 @@ router.get("/trending", optionalAuth, async (_req: AuthedRequest, res: Response)
     }
   }
   return res.json([]);
-});
+}));
 
-router.get("/:postId/comments", optionalAuth, async (req: AuthedRequest, res: Response) => {
+router.get("/:postId/comments", optionalAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
   const { postId } = req.params;
   if (!postId) return res.status(400).json({ error: "Missing postId" });
 
@@ -150,19 +156,16 @@ router.get("/:postId/comments", optionalAuth, async (req: AuthedRequest, res: Re
       return res.json(comments);
     } catch (error: any) {
       console.error("Firestore comments error:", error?.message || error);
-      return res.status(500).json({
-        error: "Failed to load comments",
-        detail: error?.message || String(error),
-      });
+      return res.status(500).json({ error: "Failed to load comments" });
     }
   }
 
   return res.json([]);
-});
+}));
 
 // ---------- Authenticated mutations ----------
 
-router.post("/", requireAuth, async (req: AuthedRequest, res: Response) => {
+router.post("/", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
   const uid = req.user!.uid;
   const { category, title, content } = req.body || {};
   const username = req.user!.name || req.user!.email?.split("@")[0] || "investor";
@@ -192,11 +195,11 @@ router.post("/", requireAuth, async (req: AuthedRequest, res: Response) => {
     return res.status(201).json({ id: docRef.id });
   } catch (error: any) {
     console.error("Forum create error:", error);
-    return res.status(500).json({ error: "Failed to create post", detail: error?.message });
+    return res.status(500).json({ error: "Failed to create post" });
   }
-});
+}));
 
-router.put("/:id", requireAuth, async (req: AuthedRequest, res: Response) => {
+router.put("/:id", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
   const uid = req.user!.uid;
   const { id } = req.params;
   const { title, content, category } = req.body || {};
@@ -221,11 +224,11 @@ router.put("/:id", requireAuth, async (req: AuthedRequest, res: Response) => {
     return res.json({ success: true });
   } catch (error: any) {
     console.error("Forum update error:", error);
-    return res.status(500).json({ error: "Failed to update post", detail: error?.message });
+    return res.status(500).json({ error: "Failed to update post" });
   }
-});
+}));
 
-router.delete("/:id", requireAuth, async (req: AuthedRequest, res: Response) => {
+router.delete("/:id", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
   const uid = req.user!.uid;
   const { id } = req.params;
 
@@ -240,11 +243,11 @@ router.delete("/:id", requireAuth, async (req: AuthedRequest, res: Response) => 
     return res.json({ success: true });
   } catch (error: any) {
     console.error("Forum delete error:", error);
-    return res.status(500).json({ error: "Failed to delete post", detail: error?.message });
+    return res.status(500).json({ error: "Failed to delete post" });
   }
-});
+}));
 
-router.post("/:id/like", requireAuth, async (req: AuthedRequest, res: Response) => {
+router.post("/:id/like", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
   const uid = req.user!.uid;
   const { id } = req.params;
 
@@ -256,20 +259,23 @@ router.post("/:id/like", requireAuth, async (req: AuthedRequest, res: Response) 
     if (!doc.exists) return res.status(404).json({ error: "Post not found" });
 
     const data = doc.data();
-    const likes: string[] = Array.isArray(data?.likes) ? [...data.likes] : [];
-    const index = likes.indexOf(uid);
-    if (index === -1) likes.push(uid);
-    else likes.splice(index, 1);
+    const currentLikes: string[] = Array.isArray(data?.likes) ? data.likes : [];
+    const alreadyLiked = currentLikes.includes(uid);
 
-    await docRef.update({ likes });
-    return res.json({ likes: likes.length, liked: index === -1 });
+    if (alreadyLiked) {
+      await docRef.update({ likes: admin.firestore.FieldValue.arrayRemove(uid) });
+    } else {
+      await docRef.update({ likes: admin.firestore.FieldValue.arrayUnion(uid) });
+    }
+
+    return res.json({ likes: alreadyLiked ? currentLikes.length - 1 : currentLikes.length + 1, liked: !alreadyLiked });
   } catch (error: any) {
     console.error("Forum like error:", error);
-    return res.status(500).json({ error: "Failed to like post", detail: error?.message });
+    return res.status(500).json({ error: "Failed to like post" });
   }
-});
+}));
 
-router.post("/:postId/comments", requireAuth, async (req: AuthedRequest, res: Response) => {
+router.post("/:postId/comments", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
   const uid = req.user!.uid;
   const { postId } = req.params;
   const { content, quoted_comment } = req.body || {};
@@ -301,11 +307,7 @@ router.post("/:postId/comments", requireAuth, async (req: AuthedRequest, res: Re
 
     try {
       const postRef = dbFirestore.collection("forum_posts").doc(postId);
-      const post = await postRef.get();
-      if (post.exists) {
-        const currentCount = post.data()?.comment_count || 0;
-        await postRef.update({ comment_count: currentCount + 1 });
-      }
+      await postRef.update({ comment_count: admin.firestore.FieldValue.increment(1) });
     } catch (countErr) {
       console.warn("comment_count update failed (non-fatal):", countErr);
     }
@@ -314,11 +316,11 @@ router.post("/:postId/comments", requireAuth, async (req: AuthedRequest, res: Re
     return res.status(201).json({ id: commentRef.id, ...payload });
   } catch (error: any) {
     console.error("Comment create error:", error);
-    return res.status(500).json({ error: "Failed to create comment", detail: error?.message });
+    return res.status(500).json({ error: "Failed to create comment" });
   }
-});
+}));
 
-router.put("/comments/:commentId", requireAuth, async (req: AuthedRequest, res: Response) => {
+router.put("/comments/:commentId", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
   const uid = req.user!.uid;
   const { commentId } = req.params;
   const { content } = req.body || {};
@@ -335,11 +337,11 @@ router.put("/comments/:commentId", requireAuth, async (req: AuthedRequest, res: 
     return res.json({ success: true });
   } catch (error: any) {
     console.error("Comment update error:", error);
-    return res.status(500).json({ error: "Failed to update comment", detail: error?.message });
+    return res.status(500).json({ error: "Failed to update comment" });
   }
-});
+}));
 
-router.delete("/comments/:commentId", requireAuth, async (req: AuthedRequest, res: Response) => {
+router.delete("/comments/:commentId", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
   const uid = req.user!.uid;
   const { commentId } = req.params;
   const post_id = req.query.post_id as string | undefined;
@@ -355,11 +357,7 @@ router.delete("/comments/:commentId", requireAuth, async (req: AuthedRequest, re
     if (post_id) {
       try {
         const postRef = dbFirestore.collection("forum_posts").doc(post_id);
-        const post = await postRef.get();
-        if (post.exists) {
-          const currentCount = post.data()?.comment_count || 0;
-          await postRef.update({ comment_count: Math.max(0, currentCount - 1) });
-        }
+        await postRef.update({ comment_count: admin.firestore.FieldValue.increment(-1) });
       } catch {
         /* non-fatal */
       }
@@ -368,8 +366,8 @@ router.delete("/comments/:commentId", requireAuth, async (req: AuthedRequest, re
     return res.json({ success: true });
   } catch (error: any) {
     console.error("Comment delete error:", error);
-    return res.status(500).json({ error: "Failed to delete comment", detail: error?.message });
+    return res.status(500).json({ error: "Failed to delete comment" });
   }
-});
+}));
 
 export default router;
