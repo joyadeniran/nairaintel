@@ -1,15 +1,14 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
+import {defineConfig} from 'vite';
 
-export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, '.', '');
+export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-    },
+    // NOTE: do not add server secrets to `define`. It string-substitutes the value
+    // into the client bundle, so any reference ships the key to every browser.
+    // Client-visible config must use a VITE_ prefix; secrets stay server-side.
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

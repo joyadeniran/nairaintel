@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/**
+ * Tailwind v4 defaults the `dark:` variant to `prefers-color-scheme`, which the
+ * in-app theme toggle cannot control. Bind it to the `.dark` class instead so the
+ * toggle drives every `dark:` utility. The class is set before paint by the boot
+ * script in index.html (stored preference, else OS preference).
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", sans-serif;
@@ -18,18 +26,8 @@
   --color-text-secondary: #475569;
 }
 
-/* Dark Mode Overrides */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg-primary: #020617;
-    --color-text-primary: #f8fafc;
-    --color-text-secondary: #94a3b8;
-    --color-glass-white: rgba(15, 23, 42, 0.8);
-    --color-glass-border: rgba(255, 255, 255, 0.1);
-  }
-}
-
-/* Support for .dark class toggle */
+/* Dark Mode Overrides — driven solely by the .dark class (see boot script in
+   index.html), so the toggle and the utilities never disagree. */
 .dark {
   --color-bg-primary: #020617;
   --color-text-primary: #f8fafc;

@@ -2,6 +2,7 @@ import React from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthModal from './components/AuthModal';
 import { Dashboard } from './pages/Dashboard';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function SetupRequired({ message }: { message: string }) {
   return (
@@ -61,8 +62,10 @@ function MainApp() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <MainApp />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
