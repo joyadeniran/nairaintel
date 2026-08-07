@@ -375,6 +375,23 @@ export async function getMarketSnapshot(): Promise<any | null> {
 }
 
 /**
+ * Configuration summary for diagnostics. Booleans and counts only — never key
+ * material, request logs, or cached values.
+ */
+export function marketDataStatus() {
+  return {
+    provider: getApiKey() ? ("ngnmarket" as const) : ("none" as const),
+    key_configured: !!getApiKey(),
+    cached_symbols: Object.keys(priceCache).length,
+    bulk_cached: !!bulkQuoteCache,
+    cache_ttl_minutes: CACHE_TTL_MS / 60000,
+    reason: getApiKey()
+      ? "NGNMARKET_API_KEY set"
+      : "No NGNMARKET_API_KEY. Ticker tape, search and live prices will all be empty.",
+  };
+}
+
+/**
  * Actively test the NGN Market connection (for diagnostics on cold serverless instances).
  */
 export async function probeMarketConnection(): Promise<{

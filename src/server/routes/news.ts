@@ -1,9 +1,10 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { getMarketNews } from "../services/ai.js";
+import { getMarketNews, aiStatus, probeAi } from "../services/ai.js";
 import {
   getLivePrices,
   getMarketSnapshot,
   probeMarketConnection,
+  marketDataStatus,
   getAllQuotes,
   searchCompanies,
 } from "../services/marketData.js";
@@ -156,24 +157,27 @@ router.get("/market-snapshot", asyncHandler(async (req: Request, res: Response) 
   }
 }));
 
+/**
+ * Full diagnostics for both upstreams. Requires auth because the probes make
+ * real API calls; `?probe=0` returns configuration only, with no upstream cost.
+ */
 router.get("/market-status", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
-  const shouldProbe =
-    req.query.probe === "1" ||
-    req.query.probe === "true" ||
-    req.query.probe === undefined;
+  const shouldProbe = req.query.probe !== "0" && req.query.probe !== "false";
 
-  let probe: any = null;
+  let marketProbe: any = null;
+  let aiProbe: any = null;
+
   if (shouldProbe) {
-    try {
-      probe = await probeMarketConnection();
-    } catch (e: any) {
-      probe = { ok: false, error: "Connection test failed" };
-    }
+    const [m, a] = await Promise.allSettled([probeMarketConnection(), probeAi()]);
+    marketProbe =
+      m.status === "fulfilled" ? m.value : { ok: false, error: "Connection test failed" };
+    aiProbe =
+      a.status === "fulfilled" ? a.value : { ok: false, detail: "Probe threw" };
   }
 
   return res.json({
-    provider: "ngnmarket",
-    probe,
+    market_data: { ...marketDataStatus(), probe: marketProbe },
+    ai: { ...aiStatus(), probe: aiProbe },
   });
 }));
 

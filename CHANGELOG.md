@@ -1,5 +1,43 @@
 # Changelog: nairaintel
 
+## [2026-08-07] - Ticker Speed, Diagnostics Endpoints
+
+### Fixed — ticker tape was unreadably fast
+- Duration was a fixed 90s for one full loop, so scroll speed scaled with the
+  number of listed companies. At ~150 companies that is ~333 px/s.
+- `TickerTape` now measures the rendered track and derives the duration from its
+  width at a constant **40 px/s**, so reading speed is the same whether 10 or 200
+  companies are listed (~750s for a full loop at 150 companies). Re-measures on
+  window resize.
+- Hover-to-pause was already implemented and compiles correctly
+  (`group-hover:[animation-play-state:paused]` on the wrapper); it was just hard
+  to perceive at the old speed.
+
+### Added — configuration diagnostics
+- `GET /api/health` (public) now reports which integrations are *configured*,
+  plus a `missing` array naming each absent variable and what breaks without it.
+  Booleans only — no key material, cached values, or upstream logs, so it stays
+  safe to expose unauthenticated.
+- `GET /api/market-status` (authenticated) extended to cover **both** upstreams.
+  It now returns market-data and AI configuration side by side, each with a live
+  probe and real error detail. Probes run concurrently; `?probe=0` returns
+  configuration only, at no upstream cost.
+- `aiStatus()` / `probeAi()` added to the AI service, reporting which backend is
+  live and why — including an explicit warning when falling back to the Firebase
+  client SDK, which authenticates as a browser client and usually fails on
+  serverless.
+- `marketDataStatus()` reintroduced in a safe form (booleans and counts only),
+  having been removed as dead code in the previous sweep.
+
+### Notes on API call volume
+- NGX upstream is hit **at most once per 10 minutes per warm serverless
+  instance** (`CACHE_TTL_MS`), not per request and not daily.
+- The ticker tape polls `/api/tickers` every 5 minutes, so roughly half of those
+  polls are served from cache at zero upstream cost.
+- Ticker search filters the cached bulk list first and typically makes **no**
+  upstream call; it only queries upstream when the cache cannot answer.
+- Each serverless cold start resets the in-memory cache and costs one call.
+
 ## [2026-08-07] - NGX Ticker Tape, Ticker Search & Backlog Cleanup
 
 ### Added — NGX ticker tape
