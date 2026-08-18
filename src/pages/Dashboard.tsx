@@ -455,6 +455,7 @@ export const Dashboard: React.FC = () => {
                   handleAddComment={handleAddComment}
                   handleDeleteComment={handleDeleteComment}
                   setEditingComment={setEditingComment}
+                  editingComment={editingComment}
                   trendingPosts={trendingPosts}
                 />
               )}

@@ -14,6 +14,7 @@ interface ForumPostDetailProps {
   onAddComment: (e: React.FormEvent) => void;
   onDeleteComment: (commentId: string | number) => void;
   setEditingComment: (c: ForumComment | null) => void;
+  editingComment?: ForumComment | null;
 }
 
 function safeDate(value?: string) {
@@ -33,7 +34,8 @@ export const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
   onBack,
   onAddComment,
   onDeleteComment,
-  setEditingComment
+  setEditingComment,
+  editingComment,
 }) => {
   const list = Array.isArray(comments) ? comments : [];
 
@@ -141,7 +143,22 @@ export const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
 
         <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md shadow-slate-200/50 dark:shadow-none">
           <form onSubmit={onAddComment} className="space-y-4">
-            {quotedComment && (
+            {editingComment && (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
+                <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 font-medium">
+                  <Edit2 size={12} />
+                  Editing your reply
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setEditingComment(null); setNewComment(''); }}
+                  className="text-xs font-bold text-rose-500 hover:text-rose-600 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {quotedComment && !editingComment && (
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
                 <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
                   <Quote size={12} className="text-brand-green" />
@@ -162,7 +179,7 @@ export const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
                 type="submit"
                 className="glow-button px-6 py-2.5 text-sm"
               >
-                Post Reply
+                {editingComment ? 'Save Reply' : 'Post Reply'}
               </button>
             </div>
           </form>

@@ -28,6 +28,7 @@ interface ForumPageProps {
   handleAddComment: (e: React.FormEvent) => void;
   handleDeleteComment: (id: string | number) => void;
   setEditingComment: (c: ForumComment | null) => void;
+  editingComment: ForumComment | null;
   trendingPosts: ForumPost[];
 }
 
@@ -136,7 +137,7 @@ export const ForumPage: React.FC<ForumPageProps> = (props) => {
                       isLiked={post.likes?.includes(user?.uid || '')}
                       onSelect={setSelectedPost}
                       onLike={props.handleLikePost}
-                      onEdit={props.setEditingPost}
+                      onEdit={(post) => { props.setEditingPost(post); props.setShowCreatePostModal(true); }}
                       onDelete={props.handleDeletePost}
                       onShare={props.handleShare}
                     />
@@ -171,6 +172,7 @@ export const ForumPage: React.FC<ForumPageProps> = (props) => {
                 onAddComment={props.handleAddComment}
                 onDeleteComment={props.handleDeleteComment}
                 setEditingComment={props.setEditingComment}
+                editingComment={props.editingComment}
               />
             </motion.div>
           )}
