@@ -1,5 +1,23 @@
 # Changelog: nairaintel
 
+## [2026-08-18] - Market Movers Widget
+
+### Added — Top Gainers / Top Losers panel in dashboard sidebar
+- `MarketOverview` component filters and ranks the existing `CompanyQuote[]`
+  ticker data (already fetched and cached — zero extra API calls).
+- Shows top 5 gainers (by `change_percent` descending) and top 5 losers
+  (ascending), with rank number, ticker symbol, company name, live price,
+  and percentage change direction arrow.
+- Tab switcher between Gainers / Losers; tab labels show live counts.
+- Skeleton loading state matches the existing shimmer style.
+- Falls back gracefully when `change_percent` is unavailable (NGX free-tier
+  may not always include delta fields).
+
+### Fixed — `AddInvestmentModal` TypeScript error
+- Pre-filled `CompanyQuote` object for editing an existing stock was missing
+  `change` and `change_percent` fields, causing `tsc --noEmit` to error.
+  Added `change: null, change_percent: null` to satisfy the interface.
+
 ## [2026-08-07] - Asset Picker Selection Fix
 
 ### Fixed — search text saved instead of selected company

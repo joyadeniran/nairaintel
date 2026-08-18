@@ -55,6 +55,8 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
         symbol: inv.symbol,
         name: inv.name,
         price: Number(inv.entry_price) || 0,
+        change: null,
+        change_percent: null,
       };
       setPicked(existing);
       pickedRef.current = existing;

@@ -13,6 +13,7 @@ import { NewsPage } from './NewsPage';
 import { LearningPage } from './LearningPage';
 import { AddInvestmentModal } from '../components/AddInvestmentModal';
 import { CreatePostModal } from '../components/CreatePostModal';
+import { MarketOverview } from '../components/MarketOverview';
 
 function livePriceFor(inv: Investment, livePrices: Record<string, number>): number {
   const sym = String(inv.symbol || '').toUpperCase();
@@ -477,7 +478,8 @@ export const Dashboard: React.FC = () => {
           </div>
 
           <div className="lg:col-span-4 space-y-8">
-            <MarketIntelligence 
+            <MarketOverview tickers={tickers} loading={loadingTickers} />
+            <MarketIntelligence
               marketNews={marketNews}
               loadingNews={loadingNews}
               currentNewsIndex={currentNewsIndex}
