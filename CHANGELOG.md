@@ -1,5 +1,28 @@
 # Changelog: nairaintel
 
+## [2026-10-07] - Sign-in Errors & Password Reset
+
+### Fixed — sign-in failures showed only "Error."
+- Root cause: the modal stripped `Firebase: ` and `(auth/…)` from messages
+  like `Firebase: Error (auth/invalid-credential).`, leaving just `Error.`
+- New `src/lib/authErrors.ts` maps Firebase Auth codes to actionable
+  messages, and the error box now shows where it came from
+  (`Source: Firebase Auth · auth/invalid-credential`, or Network /
+  App configuration / Browser), so a user screenshot is enough to diagnose.
+- Configuration problems (e.g. `auth/unauthorized-domain` on a new custom
+  domain) now say exactly which Firebase Console setting to change.
+
+### Fixed — "Continue with Google" failed silently
+- `loginWithGoogle` rejections were never caught in the modal. They now
+  surface in the same error box; closing the popup yourself stays silent.
+
+### Added — Forgot password
+- "Forgot password?" link on the sign-in form sends a Firebase reset email.
+  Wording doesn't confirm whether the account exists (Firebase email
+  enumeration protection is on) and reminds Google-only users they have
+  no password.
+- Sign-up password field now hints at the 6-character minimum.
+
 ## [2026-08-18] - Market Movers Widget
 
 ### Added — Top Gainers / Top Losers panel in dashboard sidebar
